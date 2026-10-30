@@ -1,0 +1,6 @@
+<resources>
+    <!-- Android 8.0 uses BaseAppTheme; this attribute is available from Android 8.1. -->
+    <style name="AppTheme" parent="BaseAppTheme">
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView android:tag="page" xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/ble_root" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+        <TextView style="@style/Caption" android:text="@string/eyebrow" android:textColor="?attr/accentColor" android:tag="accent" />
+        <TextView style="@style/Caption" android:layout_marginTop="8dp" android:text="@string/ble_title" android:textSize="28sp" android:textStyle="bold" android:textColor="?attr/primaryText" android:tag="primary" />
+        <TextView style="@style/Caption" android:layout_marginTop="6dp" android:text="@string/ble_subtitle" />
+        <Button android:id="@+id/theme_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/theme_button" />
+        <Button android:id="@+id/overlay_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/overlay_button" />
+        <TextView style="@style/Caption" android:text="@string/overlay_help" />
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_ble.xml_0|设备与通道">
+            <TextView android:id="@+id/ble_device_name" style="@style/Caption" android:textSize="18sp" android:textStyle="bold" android:textColor="?attr/primaryText" android:tag="primary" />
+            <TextView android:id="@+id/ble_connection" style="@style/Caption" android:layout_marginTop="8dp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/ble_choose_device" style="@style/ActionButton" android:text="@string/ble_device" />
+                <Button android:id="@+id/ble_settings" style="@style/ActionButton" android:text="@string/bluetooth_settings" />
+            </LinearLayout>
+            <Button android:id="@+id/ble_choose_channel" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ble_channel" />
+            <TextView android:id="@+id/ble_channel_name" style="@style/Caption" android:textIsSelectable="true" />
+            <Button android:id="@+id/ble_disconnect" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ble_disconnect" />
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_ble.xml_1|测试与导出">
+            <TextView style="@style/Caption" android:text="@string/ble_rate" />
+            <TextView android:id="@+id/ble_rate" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/empty_rate" android:textColor="?attr/accentColor" android:tag="accent" android:textSize="60sp" android:textStyle="bold" android:fontFamily="monospace" />
+            <TextView android:id="@+id/ble_status" style="@style/Caption" android:textColor="?attr/primaryText" android:tag="primary" />
+            <TextView android:id="@+id/ble_timer" style="@style/Caption" android:layout_marginTop="8dp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/ble_start_stop" style="@style/ActionButton" android:text="@string/start" />
+                <Button android:id="@+id/ble_duration" style="@style/ActionButton" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/ble_clear" style="@style/ActionButton" android:text="@string/clear" />
+                <Button android:id="@+id/ble_export" style="@style/ActionButton" android:text="@string/export" />
+            </LinearLayout>
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_ble.xml_2|统计与曲线">
+            <TextView android:id="@+id/ble_statistics" style="@style/Caption" android:textColor="?attr/primaryText" android:tag="primary" android:textSize="15sp" android:fontFamily="monospace" android:lineSpacingExtra="6dp" />
+            <TextView style="@style/Caption" android:layout_marginTop="12dp" android:text="@string/stats_scope" />
+            <TextView style="@style/Caption" android:layout_marginTop="12dp" android:text="@string/chart_label" />
+            <com.gamepad.rate.IntervalChartView android:id="@+id/ble_chart" android:layout_width="match_parent" android:layout_height="170dp" android:contentDescription="@string/chart_description" />
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_ble.xml_3|原始数据预览">
+            <TextView style="@style/Caption" android:text="@string/ble_payload" />
+            <TextView android:id="@+id/ble_hex" style="@style/Caption" android:layout_marginTop="10dp" android:fontFamily="monospace" android:textIsSelectable="true" />
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_ble.xml_4|服务与特征">
+            <TextView style="@style/Caption" android:text="@string/ble_services" />
+            <TextView android:id="@+id/ble_services" style="@style/Caption" android:layout_marginTop="10dp" android:textIsSelectable="true" />
+        </com.gamepad.rate.CollapsibleCard>
+        <TextView style="@style/Caption" android:layout_marginTop="14dp" android:text="@string/payload_export_help" />
+        <TextView style="@style/Caption" android:layout_marginTop="18dp" android:text="@string/ble_scope" android:textColor="?attr/warningColor" android:tag="warning" />
+        <TextView style="@style/Caption" android:layout_marginTop="10dp" android:text="@string/ble_help" />
+        <TextView style="@style/Caption" android:layout_marginTop="10dp" android:layout_marginBottom="16dp" android:text="@string/ble_precision" />
+    </LinearLayout>
+</ScrollView>

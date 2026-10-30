@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView android:tag="page" xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fillViewport="true" android:background="?attr/pageBackground">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="20dp">
+        <TextView style="@style/Caption" android:text="@string/eyebrow" android:textColor="?attr/accentColor" android:tag="accent" android:letterSpacing="0.12" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="8dp" android:text="@string/title" android:textColor="?attr/primaryText" android:tag="primary" android:textSize="28sp" android:textStyle="bold" />
+        <TextView style="@style/Caption" android:layout_marginTop="6dp" android:text="@string/subtitle" />
+        <Button android:id="@+id/open_ble" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="48dp" android:layout_marginTop="12dp" android:text="@string/open_ble" />
+        <Button android:id="@+id/open_usb" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/open_usb" />
+        <Button android:id="@+id/theme_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/theme_button" />
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_main.xml_0|设备与连接">
+            <TextView android:id="@+id/device_name" style="@style/Caption" android:textColor="?attr/primaryText" android:tag="primary" android:textSize="18sp" android:textStyle="bold" />
+            <TextView android:id="@+id/device_details" style="@style/Caption" android:layout_marginTop="6dp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="8dp">
+                <Button android:id="@+id/select_device" style="@style/ActionButton" android:text="@string/select_device" />
+                <Button android:id="@+id/bluetooth_settings" style="@style/ActionButton" android:text="@string/bluetooth_settings" />
+            </LinearLayout>
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_main.xml_1|测试与导出">
+            <TextView style="@style/Caption" android:text="@string/rate_label" />
+            <TextView android:id="@+id/rate" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:text="@string/empty_rate" android:textColor="?attr/accentColor" android:tag="accent" android:textSize="60sp" android:textStyle="bold" android:fontFamily="monospace" />
+            <TextView android:id="@+id/status" style="@style/Caption" android:textColor="?attr/primaryText" android:tag="primary" />
+            <TextView android:id="@+id/timer" style="@style/Caption" android:layout_marginTop="8dp" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="10dp">
+                <Button android:id="@+id/start_stop" style="@style/ActionButton" android:text="@string/start" />
+                <Button android:id="@+id/duration" style="@style/ActionButton" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/clear" style="@style/ActionButton" android:text="@string/clear" />
+                <Button android:id="@+id/export" style="@style/ActionButton" android:text="@string/export" />
+            </LinearLayout>
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_main.xml_2|统计数据">
+            <TextView android:id="@+id/statistics" style="@style/Caption" android:textColor="?attr/primaryText" android:tag="primary" android:textSize="15sp" android:fontFamily="monospace" android:lineSpacingExtra="8dp" />
+            <TextView style="@style/Caption" android:layout_marginTop="12dp" android:text="@string/stats_scope" />
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_main.xml_3|间隔曲线">
+            <TextView style="@style/Caption" android:text="@string/chart_label" />
+            <com.gamepad.rate.IntervalChartView android:id="@+id/chart" android:layout_width="match_parent" android:layout_height="170dp" android:layout_marginTop="8dp" android:contentDescription="@string/chart_description" />
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_main.xml_4|实时输入">
+            <TextView style="@style/Caption" android:text="@string/controller_label" />
+            <com.gamepad.rate.StickView android:id="@+id/sticks" android:layout_width="match_parent" android:layout_height="150dp" android:contentDescription="@string/stick_description" />
+            <TextView android:id="@+id/axes" style="@style/Caption" android:fontFamily="monospace" />
+            <TextView android:id="@+id/buttons" style="@style/Caption" android:layout_marginTop="8dp" />
+        </com.gamepad.rate.CollapsibleCard>
+        <TextView android:id="@+id/precision" style="@style/Caption" android:layout_marginTop="18dp" android:textColor="?attr/warningColor" android:tag="warning" />
+        <TextView style="@style/Caption" android:layout_marginTop="10dp" android:layout_marginBottom="16dp" android:text="@string/scope" />
+    </LinearLayout>
+</ScrollView>

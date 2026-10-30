@@ -1,0 +1,10 @@
+<resources>
+    <attr name="pageBackground" format="color" />
+    <attr name="cardBackground" format="color" />
+    <attr name="buttonBackground" format="color" />
+    <attr name="primaryText" format="color" />
+    <attr name="secondaryText" format="color" />
+    <attr name="accentColor" format="color" />
+    <attr name="warningColor" format="color" />
+    <attr name="lineColor" format="color" />
+</resources>

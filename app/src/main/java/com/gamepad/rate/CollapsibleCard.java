@@ -24,12 +24,13 @@ public final class CollapsibleCard extends LinearLayout {
         }
         Button header = new Button(getContext());
         header.setAllCaps(false);
+        header.setTag("card_header");
         header.setGravity(android.view.Gravity.START | android.view.Gravity.CENTER_VERTICAL);
         header.setMinHeight((int) (48 * getResources().getDisplayMetrics().density));
         addView(header, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         addView(body, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
         android.content.SharedPreferences prefs = getContext().getSharedPreferences("panels", Context.MODE_PRIVATE);
-        boolean[] collapsed = {prefs.getBoolean(key, false)};
+        boolean[] collapsed = {prefs.getBoolean(key, key.endsWith("_2") || key.endsWith("_3") || key.endsWith("_4"))};
         Runnable update = () -> {
             body.setVisibility(collapsed[0] ? GONE : VISIBLE);
             header.setText(getContext().getString(R.string.panel_title, collapsed[0] ? "▸" : "▾", title));

@@ -1,6 +1,5 @@
 package com.gamepad.rate;
 
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
@@ -15,8 +14,6 @@ import android.provider.Settings;
 import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
-import android.view.View;
-import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
@@ -51,7 +48,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
     private boolean exporting;
     private long startMs, endMs, deadlineMs;
     private long callbacks;
-    private String state = "先在系统蓝牙设置中配对手柄，再选择设备。";
+    private String state = "待开始";
     private String lastKey = "尚无按键";
     private String sessionDevice = "";
     private String sessionIdentity = "";
@@ -77,26 +74,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
 
     @Override public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // 统一使用内容延伸到系统栏下方、再手动应用 inset 的布局策略。
-        if (Build.VERSION.SDK_INT >= 30) {
-            getWindow().setDecorFitsSystemWindows(false);
-        } else {
-            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
-        }
         setContentView(R.layout.activity_main);
-        View root = findViewById(R.id.root);
-        root.setOnApplyWindowInsetsListener((view, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            } else {
-                view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
-                        insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
-            }
-            return insets;
-        });
-        root.requestApplyInsets();
         Appearance.bind(this);
         deviceName = findViewById(R.id.device_name);
         deviceDetails = findViewById(R.id.device_details);
@@ -114,11 +92,6 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
         chart = findViewById(R.id.chart);
         sticks = findViewById(R.id.sticks);
         inputManager = (InputManager) getSystemService(INPUT_SERVICE);
-        findViewById(R.id.open_usb).setOnClickListener(view -> startActivity(new Intent(this, UsbActivity.class)));
-        findViewById(R.id.open_ble).setOnClickListener(view -> startActivity(new Intent(this, BleActivity.class)));
-        ((TextView) findViewById(R.id.precision)).setText(Build.VERSION.SDK_INT >= 34
-                ? "时间戳：纳秒单位（Android 14+）；单位精度不代表硬件测量准确度。"
-                : "时间戳：毫秒精度（Android 8–13）。高频事件可能出现相同时间戳，间隔和抖动会受量化影响。建议用 Android 14+。" );
         startStop.setOnClickListener(view -> {
             if (recording) finish("已手动停止", SystemClock.uptimeMillis()); else startMeasurement();
             render();
@@ -132,7 +105,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
                 }).show());
         clearButton.setOnClickListener(view -> {
             clearMeasurement();
-            state = "已清空，持续转动摇杆后开始新一轮。";
+            state = "已清空";
             render();
         });
         exportButton.setOnClickListener(view -> chooseExport());
@@ -193,7 +166,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
     private void updateDeviceLabel() {
         InputDevice device = InputDevice.getDevice(selectedId);
         deviceName.setText(device == null ? "未发现手柄" : device.getName());
-        deviceDetails.setText(device == null ? "请切换手柄至 Android / HID 模式并完成系统配对。"
+        deviceDetails.setText(device == null ? "未连接"
                 : String.format(Locale.US, "VID %04X · PID %04X · ID %d\n系统输入设备；此接口不确认蓝牙 / USB 连接类型。",
                 device.getVendorId(), device.getProductId(), device.getId()));
         List<InputDevice.MotionRange> ranges = new ArrayList<>();
@@ -224,7 +197,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
                         clearMeasurement();
                         clearInputPreview();
                         selectedId = id;
-                        state = "设备已选择，持续转动摇杆并开始测试。";
+                        state = "设备已选择";
                     }
                     updateDeviceLabel();
                     render();
@@ -241,7 +214,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
         startMs = SystemClock.uptimeMillis();
         deadlineMs = durationSeconds == 0 ? 0 : startMs + durationSeconds * 1000L;
         recording = true;
-        state = "正在采集，请持续转动摇杆。";
+        state = "记录中";
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
@@ -351,14 +324,13 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
         rate.setText(startMs == 0 || elapsed < 1000 ? "—" : Integer.toString(stats.recentCount(displayedNow * 1_000_000L)));
         String message = state;
         if (recording) {
-            if (stats.size() == 0) message = "等待摇杆采样 · 请持续转动摇杆";
-            else if (now * 1_000_000L - stats.lastTime() > 500_000_000L) message = "暂无新采样 · 请继续转动摇杆";
-            else if (elapsed < 1000) message = "正在积累首个 1 秒窗口…";
+            if (stats.size() == 0) message = "等待摇杆数据";
+            else if (now * 1_000_000L - stats.lastTime() > 500_000_000L) message = "暂无新数据";
+            else if (elapsed < 1000) message = "记录中";
         }
         status.setText(message);
-        timer.setText(String.format(Locale.US, "%s · %.1f 秒 · %,d 个采样\n%s",
-                recording ? "采集中" : "已停止", elapsed / 1000.0, stats.size(),
-                sessionDevice.isEmpty() ? "点击开始后记录本轮数据" : "本轮设备：" + sessionDevice));
+        timer.setText(String.format(Locale.US, "%s · %.1f 秒 · %,d 个采样",
+                recording ? "记录中" : "已停止", elapsed / 1000.0, stats.size()));
         RateStatistics.Window window = stats.window();
         statistics.setText("全程平均  " + number(stats.averageHz(), " Hz")
                 + "\n平均间隔  " + number(stats.meanMs(), " ms")
@@ -375,7 +347,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
         }
         axes.setText(axisText.length() == 0 ? "等待摇杆输入" : axisText.toString());
         buttons.setText("本轮按下 " + keyPresses + " 次 · 当前按住 " + pressed.size() + " 个\n" + lastKey);
-        startStop.setText(recording ? "停止测试" : stats.size() > 0 ? "重新测试" : "开始测试");
+        startStop.setText(recording ? "停止" : stats.size() > 0 ? "重新开始" : "开始");
         startStop.setEnabled(!exporting && (recording || selectedId >= 0));
         selectDevice.setEnabled(!recording && !exporting);
         durationButton.setEnabled(!recording && !exporting);
@@ -407,6 +379,13 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
                 + "# button_presses_excluded_from_rate," + keyPresses + "\r\n"
                 + "# stop_reason," + csvText(state) + "\r\n";
         pendingExport = new ExportData(stats.snapshot(), metadata);
+        if (!ExportStore.directory(this).isEmpty()) {
+            ExportData snapshot = pendingExport; pendingExport = null; exporting = true;
+            ExportStore.save(this, "gamepad-rate", writer -> writeCsv(writer, snapshot), () -> {
+                if (!isDestroyed()) { exporting = false; render(); }
+            });
+            render(); return;
+        }
         Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
                 .setType("text/csv").putExtra(Intent.EXTRA_TITLE, "gamepad-rate-"
                         + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".csv");
@@ -437,17 +416,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
             try (OutputStream stream = getContentResolver().openOutputStream(uri, "wt")) {
                 if (stream == null) throw new IOException("无法打开文件");
                 try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))) {
-                    writer.write('\uFEFF');
-                    writer.write(export.metadata);
-                    writer.write("sample,event_uptime_ns,relative_ms,interval_ms,historical,callback_uptime_ms\r\n");
-                    RateStatistics.Snapshot samples = export.samples;
-                    for (int i = 0; i < samples.times.length; i++) {
-                        writer.write(Integer.toString(i + 1));
-                        writer.write("," + samples.times[i]);
-                        writer.write("," + milliseconds(samples.times[i] - samples.times[0]));
-                        writer.write("," + (i == 0 ? "" : milliseconds(samples.times[i] - samples.times[i - 1])));
-                        writer.write("," + (samples.historical[i] ? "1" : "0") + "," + samples.deliveriesMs[i] + "\r\n");
-                    }
+                    writeCsv(writer, export);
                 }
                 outcome = "CSV 已保存，共 " + export.samples.times.length + " 个采样";
             } catch (IOException | SecurityException exception) {
@@ -461,6 +430,20 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
                 render();
             });
         }, "csv-export").start();
+    }
+
+    private static void writeCsv(BufferedWriter writer, ExportData export) throws IOException {
+        writer.write('\uFEFF');
+        writer.write(export.metadata);
+        writer.write("sample,event_uptime_ns,relative_ms,interval_ms,historical,callback_uptime_ms\r\n");
+        RateStatistics.Snapshot samples = export.samples;
+        for (int i = 0; i < samples.times.length; i++) {
+            writer.write(Integer.toString(i + 1));
+            writer.write("," + samples.times[i]);
+            writer.write("," + milliseconds(samples.times[i] - samples.times[0]));
+            writer.write("," + (i == 0 ? "" : milliseconds(samples.times[i] - samples.times[i - 1])));
+            writer.write("," + (samples.historical[i] ? "1" : "0") + "," + samples.deliveriesMs[i] + "\r\n");
+        }
     }
 
     private static String milliseconds(long nanos) {

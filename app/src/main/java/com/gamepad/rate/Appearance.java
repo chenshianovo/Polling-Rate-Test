@@ -80,7 +80,33 @@ final class Appearance {
             int normal = color(context, attr);
             text.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[0]},
                     new int[]{(normal & 0x00ffffff) | 0x66000000, normal}));
-            if (view instanceof Button) view.setBackgroundTintList(ColorStateList.valueOf(color(context, R.attr.buttonBackground)));
+            if (view instanceof Button) {
+                Button button = (Button) view;
+                float density = context.getResources().getDisplayMetrics().density;
+                boolean action = "action".equals(tag) || "nav_selected".equals(tag), header = "card_header".equals(tag);
+                int fill = action ? color(context, R.attr.accentColor) : header || "nav".equals(tag)
+                        ? Color.TRANSPARENT : color(context, R.attr.buttonBackground);
+                if (action) normal = Color.green(fill) > 160 ? 0xFF102B26 : Color.WHITE;
+                button.setTextColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[0]},
+                        new int[]{(normal & 0x00ffffff) | 0x66000000, normal}));
+                GradientDrawable shape = new GradientDrawable();
+                shape.setColor(new ColorStateList(new int[][]{new int[]{-android.R.attr.state_enabled}, new int[0]},
+                        new int[]{header ? Color.TRANSPARENT : color(context, R.attr.buttonBackground), fill}));
+                shape.setCornerRadius(12 * density);
+                button.setBackgroundTintList(null);
+                button.setBackground(new android.graphics.drawable.RippleDrawable(
+                        ColorStateList.valueOf((normal & 0x00ffffff) | 0x22000000), shape, null));
+                button.setStateListAnimator(null);
+                button.setAllCaps(false); button.setTextSize(14);
+                button.setMinHeight(Math.round(48 * density)); button.setMinimumHeight(Math.round(48 * density));
+                button.setMinWidth(0); button.setMinimumWidth(0);
+                button.setPadding(Math.round(12 * density), Math.round(8 * density), Math.round(12 * density), Math.round(8 * density));
+                if (!header && !tag.startsWith("nav") && button.getLayoutParams() instanceof ViewGroup.MarginLayoutParams) {
+                    ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) button.getLayoutParams();
+                    margins.topMargin = Math.round(4 * density); margins.bottomMargin = Math.round(4 * density);
+                    margins.leftMargin = Math.round(3 * density); margins.rightMargin = Math.round(3 * density);
+                }
+            }
         }
         view.invalidate();
         if (view instanceof ViewGroup) {

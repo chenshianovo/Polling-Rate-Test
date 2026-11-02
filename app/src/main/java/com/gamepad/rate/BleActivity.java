@@ -2,7 +2,6 @@ package com.gamepad.rate;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -11,34 +10,24 @@ import android.bluetooth.BluetoothProfile;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
-import android.view.View;
-import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
 public final class BleActivity extends ThemedActivity {
-    private static final int CONNECT_PERMISSION = 81, EXPORT_CSV = 82;
+    private static final int CONNECT_PERMISSION = 81;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private PacketRuntime runtime;
     private PacketRateSession session;
@@ -46,9 +35,7 @@ public final class BleActivity extends ThemedActivity {
     private TextView deviceName, connection, channelName, rate, status, timer, statistics, hex, services;
     private Button chooseDevice, chooseChannel, disconnect, startStop, duration, clear, export;
     private IntervalChartView chart;
-    private int seconds = 30;
-    private boolean exporting;
-    private PacketRateSession.ExportData pendingExport;
+    private int seconds;
     private String shownServices = "";
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -59,20 +46,7 @@ public final class BleActivity extends ThemedActivity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
-        else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         setContentView(R.layout.activity_ble);
-        View root = findViewById(R.id.ble_root);
-        root.setOnApplyWindowInsetsListener((view, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            } else view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
-                    insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
-            return insets;
-        });
-        root.requestApplyInsets();
         Appearance.bind(this);
         deviceName = findViewById(R.id.ble_device_name);
         connection = findViewById(R.id.ble_connection);
@@ -93,23 +67,24 @@ public final class BleActivity extends ThemedActivity {
         chart = findViewById(R.id.ble_chart);
         runtime = PacketRuntime.get(this, false);
         session = runtime.session;
+        seconds = runtime.seconds;
         client = runtime.bleClient;
         findViewById(R.id.overlay_button).setOnClickListener(view -> RateOverlayService.toggle(this, runtime));
-        chooseDevice.setOnClickListener(view -> showDevices());
+        chooseDevice.setOnClickListener(view -> withOverlayPermission(this::showDevices));
         chooseChannel.setOnClickListener(view -> showChannels());
-        disconnect.setOnClickListener(view -> client.disconnect("已关闭本 App 的 GATT 连接"));
+        disconnect.setOnClickListener(view -> runtime.disconnect("已断开"));
         startStop.setOnClickListener(view -> {
-            if (session.isRecording()) client.stop("已手动停止");
-            else client.start(seconds);
+            if (session.isRecording()) runtime.pauseRecording();
+            else runtime.startOrResume();
         });
         clear.setOnClickListener(view -> {
-            client.stop("已清空");
+            runtime.cancelAutoStart(); client.stop("已清空");
             session.clear();
             render();
         });
         duration.setOnClickListener(view -> new AlertDialog.Builder(this).setTitle("测试时长")
                 .setItems(new String[]{"10 秒", "30 秒", "60 秒", "手动停止"}, (dialog, which) -> {
-                    seconds = new int[]{10, 30, 60, 0}[which];
+                    seconds = new int[]{10, 30, 60, 0}[which]; runtime.seconds = seconds;
                     render();
                 }).show());
         export.setOnClickListener(view -> chooseExport());
@@ -183,7 +158,7 @@ public final class BleActivity extends ThemedActivity {
                         + (name == null || name.isEmpty() ? "未命名设备" : name) + "\n" + choice.device.getAddress();
             }
             new AlertDialog.Builder(this).setTitle("选择设备 · 新连接会清空本轮")
-                    .setItems(labels, (dialog, which) -> client.connect(list.get(which).device)).show();
+                    .setItems(labels, (dialog, which) -> { runtime.armAutoStart(); client.connect(list.get(which).device); }).show();
         } catch (SecurityException exception) {
             toast("蓝牙权限不可用，请在系统应用权限中允许“附近设备”");
         } catch (IllegalStateException exception) {
@@ -206,12 +181,18 @@ public final class BleActivity extends ThemedActivity {
         String[] labels = new String[choices.size()];
         for (int i = 0; i < labels.length; i++) labels[i] = choices.get(i).label;
         new AlertDialog.Builder(this).setTitle("选择数据通道 · 切换会清空本轮")
-                .setItems(labels, (dialog, which) -> client.select(choices.get(which).key)).show();
+                .setItems(labels, (dialog, which) -> withOverlayPermission(() -> {
+                    String key = choices.get(which).key;
+                    BleGattClient.State current = client.state();
+                    if (current.ready && current.selected != null && current.selected.key.equals(key)) RateOverlayService.open(this, runtime, true);
+                    else { runtime.armAutoStart(); client.select(key); }
+                })).show();
     }
 
     private void render() {
         if (client == null) return;
-        ((Button) findViewById(R.id.overlay_button)).setText(runtime.overlay ? "关闭悬浮窗并停止测试" : "开启透明悬浮窗");
+        ((Button) findViewById(R.id.overlay_button)).setText(runtime.overlay ? "关闭悬浮窗" : "打开悬浮窗");
+        runtime.autoStart(this);
         long now = SystemClock.elapsedRealtimeNanos();
         BleGattClient.State transport = client.state();
         PacketRateSession.ViewData data = session.view(now);
@@ -220,80 +201,34 @@ public final class BleActivity extends ThemedActivity {
         channelName.setText(transport.selected == null ? "尚未选择接收通道" : transport.selected.label);
         rate.setText(data.hz < 0 ? "—" : Integer.toString(data.hz));
         String message = data.reason;
-        if (data.recording && data.count == 0) message = "等待设备数据；如需私有启动命令，本版无法自动猜测";
-        else if (data.recording && now - data.previewTime > RateStatistics.SECOND_NS) message = "最近 1 秒没有收到选定通道的数据";
-        else if (data.recording && data.elapsedNs < RateStatistics.SECOND_NS) message = "正在积累首个 1 秒窗口…";
+        if (data.recording && data.count == 0) message = "等待数据";
+        else if (data.recording && now - data.previewTime > RateStatistics.SECOND_NS) message = "暂无新数据";
+        else if (data.recording && data.elapsedNs < RateStatistics.SECOND_NS) message = "记录中";
         status.setText(message);
-        timer.setText(String.format(Locale.US, "%s · %.1f 秒 · %,d 次接收", data.recording ? "采集中" : "已停止", data.elapsedNs / 1e9, data.count));
+        timer.setText(String.format(Locale.US, "%s · %.1f 秒 · %,d 次接收", data.recording ? "记录中" : session.isPaused() ? "已暂停" : "已停止", data.elapsedNs / 1e9, data.count));
         statistics.setText(getString(R.string.ble_stats, number(data.averageHz), number(data.meanMs), number(data.minMs),
                 number(data.maxMs), number(data.window.p95Ms), number(data.window.jitterMs), data.count, data.bytes, data.equalTimes, data.backwards));
         chart.setIntervals(data.intervals);
         hex.setText(data.previewTime < 0 ? "尚未收到数据" : "完整长度 " + data.previewLength + " 字节\n"
-                + PacketRateSession.hex(data.preview) + (data.previewLength > 64 ? " …（预览截断）" : ""));
+                + PacketRateSession.hex(data.preview) + (data.previewLength > 64 ? " …" : ""));
         if (!shownServices.equals(transport.services)) {
             shownServices = transport.services;
             services.setText(shownServices);
         }
-        chooseDevice.setEnabled(!data.recording && !exporting);
-        chooseChannel.setEnabled(transport.connected && !transport.busy && !data.recording && !exporting && !transport.channels.isEmpty());
-        disconnect.setEnabled((transport.connected || transport.busy) && !exporting);
-        startStop.setEnabled(!exporting && (data.recording || (transport.ready && !transport.busy)));
-        startStop.setText(data.recording ? "停止测试" : data.count > 0 ? "重新测试" : "开始测试");
-        duration.setEnabled(!data.recording && !exporting);
+        chooseDevice.setEnabled(!data.recording);
+        chooseChannel.setEnabled(transport.connected && !transport.busy && !data.recording && !transport.channels.isEmpty());
+        disconnect.setEnabled((transport.connected || transport.busy));
+        startStop.setEnabled((data.recording || (transport.ready && !transport.busy)));
+        startStop.setText(data.recording ? "暂停" : session.isPaused() ? "继续" : data.count > 0 ? "重新开始" : "开始");
+        duration.setEnabled(!data.recording && !session.isPaused());
         duration.setText(seconds == 0 ? "时长：手动" : "时长：" + seconds + " 秒");
-        clear.setEnabled(!exporting);
-        export.setEnabled(!exporting && !data.recording && data.count > 0);
+        clear.setEnabled(true);
+        export.setEnabled(data.count > 0);
         if (data.recording) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
-    private void chooseExport() {
-        if (exporting) return;
-        pendingExport = session.export();
-        if (pendingExport == null) return;
-        exporting = true;
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
-                .setType("text/csv").putExtra(Intent.EXTRA_TITLE, "ble-rate-"
-                        + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".csv");
-        try { startActivityForResult(intent, EXPORT_CSV); }
-        catch (ActivityNotFoundException exception) {
-            exporting = false;
-            pendingExport = null;
-            toast("没有可用的文件保存应用");
-        }
-        render();
-    }
-
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != EXPORT_CSV) return;
-        PacketRateSession.ExportData snapshot = pendingExport;
-        pendingExport = null;
-        if (resultCode != RESULT_OK || data == null || data.getData() == null || snapshot == null) {
-            exporting = false;
-            render();
-            return;
-        }
-        Uri uri = data.getData();
-        new Thread(() -> {
-            String outcome;
-            try (OutputStream stream = getContentResolver().openOutputStream(uri, "wt")) {
-                if (stream == null) throw new IOException("无法打开输出文件");
-                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))) {
-                    PacketCsvWriter.write(writer, snapshot, "ble_selected_characteristic_callback_rate",
-                            Build.VERSION.SDK_INT, Build.MANUFACTURER + " " + Build.MODEL);
-                }
-                outcome = "CSV 已保存，共 " + snapshot.lengths.length + " 次接收";
-            } catch (IOException | SecurityException exception) { outcome = "保存失败：" + exception.getMessage(); }
-            String result = outcome;
-            ui.post(() -> {
-                if (isDestroyed()) return;
-                exporting = false;
-                toast(result);
-                render();
-            });
-        }, "ble-csv-export").start();
-    }
+    private void chooseExport() { ExportStore.packet(this, runtime); render(); }
 
     private static String number(double value) { return Double.isNaN(value) ? "—" : String.format(Locale.US, "%.2f", value); }
     private void toast(String text) { Toast.makeText(this, text, Toast.LENGTH_LONG).show(); }

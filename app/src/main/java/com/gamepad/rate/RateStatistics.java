@@ -12,6 +12,10 @@ final class RateStatistics {
     private final long[] deliveriesMs = new long[CAPACITY];
     private final boolean[] historical = new boolean[CAPACITY];
     private int size;
+    private final boolean[] segmentStarts = new boolean[CAPACITY];
+    private boolean nextSegment = true;
+    private int intervalCount;
+    private long intervalTotal;
     private long backwards;
     private long equalTimes;
     private long historyCount;
@@ -20,6 +24,9 @@ final class RateStatistics {
 
     void clear() {
         size = 0;
+        nextSegment = true;
+        intervalCount = 0;
+        intervalTotal = 0;
         backwards = 0;
         equalTimes = 0;
         historyCount = 0;
@@ -37,10 +44,16 @@ final class RateStatistics {
             }
             // 不同采样可能被舍入到同一毫秒，所以不能直接去重。
             // 频率按总时间跨度计算，不把单个 0 间隔换算成无穷大 Hz。
-            if (delta == 0) equalTimes++;
-            minInterval = Math.min(minInterval, delta);
-            maxInterval = Math.max(maxInterval, delta);
+            if (!nextSegment) {
+                if (delta == 0) equalTimes++;
+                minInterval = Math.min(minInterval, delta);
+                maxInterval = Math.max(maxInterval, delta);
+                intervalTotal += delta;
+                intervalCount++;
+            }
         }
+        segmentStarts[size] = nextSegment;
+        nextSegment = false;
         times[size] = timeNs;
         deliveriesMs[size] = deliveryMs;
         historical[size] = isHistorical;
@@ -50,6 +63,7 @@ final class RateStatistics {
     }
 
     int size() { return size; }
+    void beginSegment() { nextSegment = true; }
     boolean full() { return size == CAPACITY; }
     long backwards() { return backwards; }
     long equalTimes() { return equalTimes; }
@@ -57,16 +71,15 @@ final class RateStatistics {
     long lastTime() { return size == 0 ? 0 : times[size - 1]; }
 
     double averageHz() {
-        long span = size > 1 ? times[size - 1] - times[0] : 0;
-        return span > 0 ? (size - 1) * (double) SECOND_NS / span : Double.NaN;
+        return intervalTotal > 0 ? intervalCount * (double) SECOND_NS / intervalTotal : Double.NaN;
     }
 
     double meanMs() {
-        return size > 1 ? (times[size - 1] - times[0]) / 1_000_000.0 / (size - 1) : Double.NaN;
+        return intervalCount > 0 ? intervalTotal / 1_000_000.0 / intervalCount : Double.NaN;
     }
 
-    double minMs() { return size > 1 ? minInterval / 1_000_000.0 : Double.NaN; }
-    double maxMs() { return size > 1 ? maxInterval / 1_000_000.0 : Double.NaN; }
+    double minMs() { return intervalCount > 0 ? minInterval / 1_000_000.0 : Double.NaN; }
+    double maxMs() { return intervalCount > 0 ? maxInterval / 1_000_000.0 : Double.NaN; }
 
     /** Count in (now - 1 second, now], including idle time in the fixed window. */
     int recentCount(long nowNs) {
@@ -85,11 +98,11 @@ final class RateStatistics {
     }
 
     double[] recentIntervals(int limit) {
-        int count = Math.min(Math.max(0, size - 1), limit);
+        int count = Math.min(intervalCount, Math.max(0, limit));
         double[] result = new double[count];
-        for (int i = 0; i < count; i++) {
-            int index = size - count + i;
-            result[i] = (times[index] - times[index - 1]) / 1_000_000.0;
+        int write = count - 1;
+        for (int index = size - 1; index > 0 && write >= 0; index--) {
+            if (!segmentStarts[index]) result[write--] = (times[index] - times[index - 1]) / 1_000_000.0;
         }
         return result;
     }
@@ -111,7 +124,7 @@ final class RateStatistics {
 
     Snapshot snapshot() {
         return new Snapshot(Arrays.copyOf(times, size), Arrays.copyOf(deliveriesMs, size),
-                Arrays.copyOf(historical, size));
+                Arrays.copyOf(historical, size), Arrays.copyOf(segmentStarts, size));
     }
 
     static final class Window {
@@ -129,10 +142,12 @@ final class RateStatistics {
         final long[] times;
         final long[] deliveriesMs;
         final boolean[] historical;
-        Snapshot(long[] times, long[] deliveriesMs, boolean[] historical) {
+        final boolean[] segmentStarts;
+        Snapshot(long[] times, long[] deliveriesMs, boolean[] historical, boolean[] segmentStarts) {
             this.times = times;
             this.deliveriesMs = deliveriesMs;
             this.historical = historical;
+            this.segmentStarts = segmentStarts;
         }
     }
 }

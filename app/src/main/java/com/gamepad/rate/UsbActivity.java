@@ -2,7 +2,6 @@ package com.gamepad.rate;
 
 import android.app.AlertDialog;
 import android.app.PendingIntent;
-import android.content.ActivityNotFoundException;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -10,32 +9,21 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.view.View;
-import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.OutputStream;
-import java.io.OutputStreamWriter;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
 public final class UsbActivity extends ThemedActivity {
-    private static final int EXPORT_CSV = 92;
     private final Handler ui = new Handler(Looper.getMainLooper());
     private PacketRuntime runtime;
     private PacketRateSession session;
@@ -44,9 +32,8 @@ public final class UsbActivity extends ThemedActivity {
     private UsbHostClient client;
     private UsbDevice selectedDevice, pendingDevice;
     private PendingIntent permissionIntent;
-    private boolean resumed, permissionReturned, exporting;
-    private int seconds = 30;
-    private PacketRateSession.ExportData pendingExport;
+    private boolean resumed, permissionReturned;
+    private int seconds;
     private TextView deviceName, connection, channelName, rate, status, timer, statistics, hex;
     private Button chooseDevice, chooseChannel, disconnect, startStop, duration, clear, export;
     private IntervalChartView chart;
@@ -72,25 +59,14 @@ public final class UsbActivity extends ThemedActivity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (Build.VERSION.SDK_INT >= 30) getWindow().setDecorFitsSystemWindows(false);
-        else getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
         setContentView(R.layout.activity_usb);
-        View root = findViewById(R.id.usb_root);
-        root.setOnApplyWindowInsetsListener((view, insets) -> {
-            if (Build.VERSION.SDK_INT >= 30) {
-                android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
-            } else view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
-                    insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
-            return insets;
-        });
-        root.requestApplyInsets();
         Appearance.bind(this);
         manager = (UsbManager) getSystemService(USB_SERVICE);
         runtime = PacketRuntime.get(this, true);
         session = runtime.session;
+        seconds = runtime.seconds;
         client = runtime.usbClient;
+        selectedDevice = client.selectedDevice();
         findViewById(R.id.overlay_button).setOnClickListener(view -> RateOverlayService.toggle(this, runtime));
         deviceName = findViewById(R.id.usb_device_name); connection = findViewById(R.id.usb_connection);
         channelName = findViewById(R.id.usb_channel_name); rate = findViewById(R.id.usb_rate);
@@ -100,14 +76,14 @@ public final class UsbActivity extends ThemedActivity {
         disconnect = findViewById(R.id.usb_disconnect); startStop = findViewById(R.id.usb_start_stop);
         duration = findViewById(R.id.usb_duration); clear = findViewById(R.id.usb_clear);
         export = findViewById(R.id.usb_export); chart = findViewById(R.id.usb_chart);
-        chooseDevice.setOnClickListener(view -> showDevices());
+        chooseDevice.setOnClickListener(view -> withOverlayPermission(this::showDevices));
         chooseChannel.setOnClickListener(view -> { if (selectedDevice != null) showChannels(selectedDevice); });
-        disconnect.setOnClickListener(view -> client.disconnect("USB 接口已释放；系统输入未恢复时请重新插拔"));
-        startStop.setOnClickListener(view -> { if (session.isRecording()) client.stop("已手动停止"); else client.start(seconds); });
-        clear.setOnClickListener(view -> { client.stop("已清空"); session.clear(); render(); });
+        disconnect.setOnClickListener(view -> runtime.disconnect("已断开"));
+        startStop.setOnClickListener(view -> { if (session.isRecording()) runtime.pauseRecording(); else runtime.startOrResume(); });
+        clear.setOnClickListener(view -> { runtime.cancelAutoStart(); client.stop("已清空"); session.clear(); render(); });
         duration.setOnClickListener(view -> new AlertDialog.Builder(this).setTitle("测试时长")
                 .setItems(new String[]{"10 秒", "30 秒", "60 秒", "手动停止"}, (dialog, which) -> {
-                    seconds = new int[]{10, 30, 60, 0}[which]; render();
+                    seconds = new int[]{10, 30, 60, 0}[which]; runtime.seconds = seconds; render();
                 }).show());
         export.setOnClickListener(view -> chooseExport());
         IntentFilter filter = new IntentFilter(permissionAction);
@@ -178,13 +154,14 @@ public final class UsbActivity extends ThemedActivity {
         new AlertDialog.Builder(this).setTitle("选择端点 · 连接后清空本轮")
                 .setItems(labels, (dialog, which) -> new AlertDialog.Builder(this).setTitle("连接 USB 接收端点")
                         .setMessage("将接管所选接口，期间系统手柄输入可能暂停。断开后会释放；如未恢复，请重新插拔。\n\n" + labels[which])
-                        .setPositiveButton("连接并接管接口", (confirm, button) -> {
-                            selectedDevice = device; client.connect(device, channels.get(which));
-                        }).setNegativeButton("取消", null).show()).show();
+                        .setPositiveButton("连接", (confirm, button) -> withOverlayPermission(() -> {
+                            selectedDevice = device; runtime.armAutoStart(); client.connect(device, channels.get(which));
+                        })).setNegativeButton("取消", null).show()).show();
     }
 
     private void render() {
-        ((Button) findViewById(R.id.overlay_button)).setText(runtime.overlay ? "关闭悬浮窗并停止测试" : "开启透明悬浮窗");
+        ((Button) findViewById(R.id.overlay_button)).setText(runtime.overlay ? "关闭悬浮窗" : "打开悬浮窗");
+        runtime.autoStart(this);
         long now = SystemClock.elapsedRealtimeNanos();
         UsbHostClient.State transport = client.state();
         PacketRateSession.ViewData data = session.view(now);
@@ -192,53 +169,26 @@ public final class UsbActivity extends ThemedActivity {
         channelName.setText(transport.channel.isEmpty() ? "尚未选择端点" : transport.channel);
         rate.setText(data.hz < 0 ? "—" : Integer.toString(data.hz));
         status.setText(data.recording && (data.count == 0 || now - data.previewTime > RateStatistics.SECOND_NS)
-                ? "等待 USB 数据 · 请操作手柄；需要私有初始化的设备可能无数据" : data.reason);
-        timer.setText(String.format(Locale.US, "%s · %.1f 秒 · %,d 次接收", data.recording ? "采集中" : "已停止", data.elapsedNs / 1e9, data.count));
+                ? "等待数据" : data.reason);
+        timer.setText(String.format(Locale.US, "%s · %.1f 秒 · %,d 次接收", data.recording ? "记录中" : session.isPaused() ? "已暂停" : "已停止", data.elapsedNs / 1e9, data.count));
         statistics.setText(getString(R.string.ble_stats, number(data.averageHz), number(data.meanMs), number(data.minMs), number(data.maxMs),
                 number(data.window.p95Ms), number(data.window.jitterMs), data.count, data.bytes, data.equalTimes, data.backwards));
         chart.setIntervals(data.intervals);
         hex.setText(data.previewTime < 0 ? "尚未收到数据" : "完整长度 " + data.previewLength + " 字节\n"
-                + PacketRateSession.hex(data.preview) + (data.previewLength > 64 ? " …（预览截断，CSV 保留完整内容）" : ""));
-        chooseDevice.setEnabled(!data.recording && !exporting);
-        chooseChannel.setEnabled(selectedDevice != null && !data.recording && !exporting);
+                + PacketRateSession.hex(data.preview) + (data.previewLength > 64 ? " …" : ""));
+        chooseDevice.setEnabled(!data.recording);
+        chooseChannel.setEnabled(selectedDevice != null && !data.recording);
         disconnect.setEnabled(transport.ready || transport.busy);
-        startStop.setEnabled(!exporting && (data.recording || transport.ready));
-        startStop.setText(data.recording ? "停止测试" : data.count > 0 ? "重新测试" : "开始测试");
-        duration.setEnabled(!data.recording && !exporting);
+        startStop.setEnabled((data.recording || transport.ready));
+        startStop.setText(data.recording ? "暂停" : session.isPaused() ? "继续" : data.count > 0 ? "重新开始" : "开始");
+        duration.setEnabled(!data.recording && !session.isPaused());
         duration.setText(seconds == 0 ? "时长：手动" : "时长：" + seconds + " 秒");
-        clear.setEnabled(!exporting); export.setEnabled(!exporting && !data.recording && data.count > 0);
+        clear.setEnabled(true); export.setEnabled(data.count > 0);
         if (data.recording) getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         else getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
-    private void chooseExport() {
-        if (exporting) return;
-        pendingExport = session.export(); if (pendingExport == null) return;
-        exporting = true;
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/csv")
-                .putExtra(Intent.EXTRA_TITLE, "usb-rate-" + new SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(new Date()) + ".csv");
-        try { startActivityForResult(intent, EXPORT_CSV); }
-        catch (ActivityNotFoundException exception) { exporting = false; pendingExport = null; toast("没有可用的文件保存应用"); }
-    }
-    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != EXPORT_CSV) return;
-        PacketRateSession.ExportData snapshot = pendingExport; pendingExport = null;
-        if (resultCode != RESULT_OK || data == null || data.getData() == null || snapshot == null) { exporting = false; return; }
-        Uri uri = data.getData();
-        new Thread(() -> {
-            String outcome;
-            try (OutputStream stream = getContentResolver().openOutputStream(uri, "wt")) {
-                if (stream == null) throw new IOException("无法打开输出文件");
-                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))) {
-                    PacketCsvWriter.write(writer, snapshot, "usb_interrupt_in_nonempty_completion_rate", Build.VERSION.SDK_INT,
-                            Build.MANUFACTURER + " " + Build.MODEL);
-                }
-                outcome = "CSV 已保存，共 " + snapshot.lengths.length + " 次接收，包含完整 payload";
-            } catch (IOException | SecurityException exception) { outcome = "保存失败：" + exception.getMessage(); }
-            String result = outcome;
-            ui.post(() -> { if (!isDestroyed()) { exporting = false; toast(result); render(); } });
-        }, "usb-csv-export").start();
-    }
+    private void chooseExport() { ExportStore.packet(this, runtime); render(); }
+
     private static String number(double value) { return Double.isNaN(value) ? "—" : String.format(Locale.US, "%.2f", value); }
     private void toast(String message) { Toast.makeText(this, message, Toast.LENGTH_LONG).show(); }
 }

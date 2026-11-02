@@ -27,13 +27,14 @@ final class UsbHostClient {
     private final Object lock = new Object();
     private Run active;
     private boolean foreground;
-    private volatile State state = new State("尚未选择 USB 设备", "", "通过 OTG 连接手柄后选择设备", false, false);
+    private volatile State state = new State("尚未选择 USB 设备", "", "未连接", false, false);
 
     UsbHostClient(Context context, PacketRateSession session) {
         manager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
         this.session = session;
     }
     State state() { return state; }
+    UsbDevice selectedDevice() { synchronized (lock) { return active == null ? null : active.device; } }
 
     static List<Channel> channels(UsbDevice device) {
         List<Channel> result = new ArrayList<>();
@@ -64,7 +65,8 @@ final class UsbHostClient {
 
     void start(int seconds) {
         synchronized (lock) {
-            if (!foreground || active == null || !state.ready) return;
+            if (!foreground || active == null || !state.ready || session.isRecording()) return;
+            if (session.isPaused()) { session.resume(SystemClock.elapsedRealtimeNanos()); return; }
             session.start(SystemClock.elapsedRealtimeNanos(), seconds, state.device, state.channel,
                     new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date()));
         }

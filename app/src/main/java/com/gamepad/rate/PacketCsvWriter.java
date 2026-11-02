@@ -16,6 +16,8 @@ final class PacketCsvWriter {
         writer.write("# started," + text(data.started) + "\r\n# stop_reason," + text(data.reason) + "\r\n");
         writer.write("# android_sdk," + sdk + "\r\n# phone," + text(phone) + "\r\n");
         writer.write("# duration_ms," + millis(data.endNs - data.startNs) + "\r\n");
+        writer.write("# paused_ms," + millis(data.pausedNs) + "\r\n# active_duration_ms," + millis(data.endNs - data.startNs - data.pausedNs) + "\r\n");
+        writer.write("# segments,blank_interval_marks_first_sample_or_resume_boundary\r\n");
         writer.write("# average_hz," + (Double.isNaN(data.averageHz) ? "" : String.format(Locale.US, "%.6f", data.averageHz)) + "\r\n");
         writer.write("# total_bytes," + data.bytes + "\r\n# rejected_backwards," + data.backwards + "\r\n");
         writer.write("# payload,full_received_bytes_hex_no_protocol_decoding\r\n");
@@ -23,7 +25,7 @@ final class PacketCsvWriter {
         long[] times = data.samples.times;
         for (int i = 0; i < times.length; i++) {
             writer.write((i + 1) + "," + times[i] + "," + millis(times[i] - times[0]) + ","
-                    + (i == 0 ? "" : millis(times[i] - times[i - 1])) + "," + data.lengths[i] + ",\"");
+                    + (data.samples.segmentStarts[i] ? "" : millis(times[i] - times[i - 1])) + "," + data.lengths[i] + ",\"");
             if (data.payloads[i].length != 0) writer.write(PacketRateSession.hex(data.payloads[i]));
             writer.write("\"\r\n");
         }

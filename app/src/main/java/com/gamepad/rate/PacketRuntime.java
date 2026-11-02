@@ -19,6 +19,29 @@ final class PacketRuntime {
     final BleGattClient bleClient;
     final UsbHostClient usbClient;
     boolean visible, overlay;
+    int seconds;
+    private long armedGeneration = -1;
+    private Object armedState;
+
+    void armAutoStart() {
+        armedGeneration = session.generation();
+        armedState = usbMode ? usbClient.state() : bleClient.state();
+    }
+    void cancelAutoStart() { armedGeneration = -1; armedState = null; }
+    void autoStart(android.app.Activity activity) {
+        if (armedGeneration < 0 || !visible || !activity.hasWindowFocus() || !ready()
+                || session.generation() <= armedGeneration
+                || armedState == (usbMode ? usbClient.state() : bleClient.state())) return;
+        cancelAutoStart();
+        RateOverlayService.open(activity, this, true);
+    }
+    void startOrResume() {
+        if (!ready() || session.isRecording()) return;
+        if (usbMode) usbClient.start(seconds); else bleClient.start(seconds);
+    }
+    void pauseRecording() {
+        if (usbMode) session.pause(SystemClock.elapsedRealtimeNanos()); else bleClient.pause();
+    }
 
     private PacketRuntime(Context context, boolean usbMode) {
         this.usbMode = usbMode;
@@ -37,9 +60,11 @@ final class PacketRuntime {
         if (!overlay) disconnect("离开前台，测试停止并释放连接");
     }
     void disconnect(String reason) {
+        cancelAutoStart();
         if (usbMode) usbClient.disconnect(reason); else bleClient.disconnect(reason);
     }
     void endOverlay() {
+        cancelAutoStart();
         overlay = false;
         if (usbMode) usbClient.stop("悬浮测试已关闭"); else bleClient.stop("悬浮测试已关闭");
         focus(visible);

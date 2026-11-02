@@ -36,11 +36,12 @@ final class BleGattClient {
     private BluetoothGattDescriptor pendingDescriptor;
     private boolean connected, busy, ready, disabling;
     private String deviceName = "尚未选择 BLE 设备";
-    private String status = "点击选择蓝牙设备，自动获取服务与特征";
+    private String status = "未连接";
     private String services = "连接后自动发现";
     private Runnable timeout;
     private volatile State state;
     private volatile boolean foreground;
+    private long recordingCommand; // Guarded by the session monitor, including queued start requests.
 
     BleGattClient(Context context, PacketRateSession session) {
         this.context = context.getApplicationContext();
@@ -58,9 +59,17 @@ final class BleGattClient {
     }
 
     void stop(String reason) {
-        session.stop(reason, SystemClock.elapsedRealtimeNanos());
-        // Also stop after any already-queued start request.
-        worker.post(() -> session.stop(reason, SystemClock.elapsedRealtimeNanos()));
+        synchronized (session) {
+            recordingCommand++;
+            session.stop(reason, SystemClock.elapsedRealtimeNanos());
+        }
+    }
+
+    void pause() {
+        synchronized (session) {
+            recordingCommand++;
+            session.pause(SystemClock.elapsedRealtimeNanos());
+        }
     }
 
     void connect(BluetoothDevice device) {
@@ -108,16 +117,23 @@ final class BleGattClient {
     }
 
     void start(int seconds) {
-        worker.post(() -> {
-            if (!foreground || !ready || selected == null || busy || !connected || session.isRecording()) return;
-            session.start(SystemClock.elapsedRealtimeNanos(), seconds, deviceName, selected.label,
-                    new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date()));
-        });
+        synchronized (session) {
+            long command = ++recordingCommand;
+            worker.post(() -> {
+                synchronized (session) {
+                    if (command != recordingCommand || !foreground || !ready || selected == null
+                            || busy || !connected || session.isRecording()) return;
+                    if (session.isPaused()) session.resume(SystemClock.elapsedRealtimeNanos());
+                    else session.start(SystemClock.elapsedRealtimeNanos(), seconds, deviceName, selected.label,
+                            new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).format(new Date()));
+                }
+            });
+        }
     }
 
     void disconnect(String reason) {
         // Stop recording immediately, even if the worker has callbacks queued.
-        session.stop(reason, SystemClock.elapsedRealtimeNanos());
+        stop(reason);
         worker.post(() -> closeInternal(reason));
     }
 
@@ -224,7 +240,7 @@ final class BleGattClient {
             }
             services = text.length() == 0 ? "设备没有返回可见 GATT 服务" : text.toString();
             busy = false;
-            status = channels.isEmpty() ? "未找到可订阅通道；可查看下方服务信息" : "已自动发现 " + channels.size() + " 个可接收通道，请选择";
+            status = channels.isEmpty() ? "无可用通道" : "发现 " + channels.size() + " 个通道";
             publish();
             if (channels.size() == 1) select(channels.get(0).key);
         }

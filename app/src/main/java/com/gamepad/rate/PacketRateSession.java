@@ -10,9 +10,11 @@ final class PacketRateSession {
     private final byte[][] payloads = new byte[RateStatistics.CAPACITY][];
     private final int payloadLimit;
     private boolean recording;
+    private boolean paused;
+    private long pauseNs, pausedNs, segmentNs, generation;
     private long startNs = -1, endNs, deadlineNs, bytes;
     private String device = "", channel = "", started = "";
-    private String reason = "选择设备和数据通道后开始测试";
+    private String reason = "待开始";
     private byte[] preview = new byte[0];
     private long previewTime = -1;
     private int previewLength;
@@ -27,13 +29,16 @@ final class PacketRateSession {
         Arrays.fill(payloads, 0, stats.size(), null);
         stats.clear();
         recording = false;
+        paused = false;
+        pauseNs = pausedNs = segmentNs = 0;
         startNs = -1;
         endNs = deadlineNs = bytes = 0;
         device = channel = started = "";
-        reason = "已清空，点击开始记录新一轮";
+        reason = "已清空";
     }
 
     synchronized void channelChanged() {
+        generation++;
         clear();
         preview = new byte[0];
         previewLength = 0;
@@ -46,16 +51,40 @@ final class PacketRateSession {
         this.channel = channel;
         this.started = started;
         startNs = nowNs;
+        segmentNs = nowNs;
         deadlineNs = seconds == 0 ? 0 : nowNs + seconds * RateStatistics.SECOND_NS;
         recording = true;
-        reason = "正在记录选定通道的数据";
+        reason = "记录中";
+    }
+
+    synchronized long generation() { return generation; }
+    synchronized boolean isPaused() { return paused; }
+    synchronized void pause(long nowNs) {
+        if (!recording) return;
+        if (deadlineNs > 0 && nowNs >= deadlineNs) { stop("定时测试完成", deadlineNs); return; }
+        recording = false;
+        paused = true;
+        pauseNs = endNs = nowNs;
+        reason = "已暂停";
+    }
+    synchronized boolean resume(long nowNs) {
+        if (!paused || nowNs < pauseNs) return false;
+        long gap = nowNs - pauseNs;
+        pausedNs += gap;
+        if (deadlineNs > 0) deadlineNs += gap;
+        stats.beginSegment();
+        segmentNs = nowNs;
+        recording = true;
+        paused = false;
+        reason = "记录中";
+        return true;
     }
 
     synchronized void accept(long timestampNs, byte[] value) {
         previewTime = timestampNs;
         previewLength = value.length;
         preview = Arrays.copyOf(value, Math.min(64, value.length));
-        if (!recording || timestampNs < startNs) return;
+        if (!recording || timestampNs < segmentNs) return;
         if (deadlineNs > 0 && timestampNs >= deadlineNs) {
             stop("定时测试完成", deadlineNs);
             return;
@@ -80,7 +109,9 @@ final class PacketRateSession {
     }
 
     synchronized void stop(String reason, long nowNs) {
-        if (!recording) return;
+        if (!recording && !paused) return;
+        if (paused) nowNs = pauseNs;
+        paused = false;
         recording = false;
         endNs = Math.max(startNs, deadlineNs > 0 ? Math.min(deadlineNs, nowNs) : nowNs);
         this.reason = reason;
@@ -91,8 +122,8 @@ final class PacketRateSession {
     synchronized ViewData view(long nowNs) {
         if (recording && deadlineNs > 0 && nowNs >= deadlineNs) stop("定时测试完成", deadlineNs);
         long end = recording ? nowNs : endNs;
-        long elapsed = startNs < 0 ? 0 : Math.max(0, end - startNs);
-        int hz = startNs < 0 || elapsed < RateStatistics.SECOND_NS ? -1 : stats.recentCount(end);
+        long elapsed = startNs < 0 ? 0 : Math.max(0, end - startNs - pausedNs);
+        int hz = startNs < 0 || end - segmentNs < RateStatistics.SECOND_NS ? -1 : stats.recentCount(end);
         return new ViewData(recording, stats.size(), hz, elapsed, bytes, reason, stats.averageHz(),
                 stats.meanMs(), stats.minMs(), stats.maxMs(), stats.window(), stats.recentIntervals(160),
                 stats.equalTimes(), stats.backwards(), preview.clone(), previewLength, previewTime);
@@ -103,7 +134,7 @@ final class PacketRateSession {
         byte[][] copy = new byte[stats.size()][];
         for (int i = 0; i < copy.length; i++) copy[i] = payloads[i].clone();
         return new ExportData(stats.snapshot(), Arrays.copyOf(lengths, stats.size()), copy, device, channel,
-                started, reason, startNs, endNs, bytes, stats.averageHz(), stats.backwards());
+                started, reason, startNs, endNs, bytes, stats.averageHz(), stats.backwards(), pausedNs);
     }
 
     static String hex(byte[] bytes) {
@@ -142,13 +173,14 @@ final class PacketRateSession {
         final int[] lengths;
         final byte[][] payloads;
         final String device, channel, started, reason;
-        final long startNs, endNs, bytes, backwards;
+        final long startNs, endNs, bytes, backwards, pausedNs;
         final double averageHz;
         ExportData(RateStatistics.Snapshot samples, int[] lengths, byte[][] payloads, String device, String channel,
-                   String started, String reason, long startNs, long endNs, long bytes, double averageHz, long backwards) {
+                   String started, String reason, long startNs, long endNs, long bytes, double averageHz, long backwards, long pausedNs) {
             this.samples = samples; this.lengths = lengths; this.payloads = payloads; this.device = device; this.channel = channel;
             this.started = started; this.reason = reason; this.startNs = startNs; this.endNs = endNs;
             this.bytes = bytes; this.averageHz = averageHz; this.backwards = backwards;
+            this.pausedNs = pausedNs;
         }
     }
 }

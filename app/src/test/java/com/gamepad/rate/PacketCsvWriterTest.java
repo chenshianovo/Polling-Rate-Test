@@ -5,6 +5,24 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class PacketCsvWriterTest {
+    @Test public void csvMarksResumeBoundaryWithoutChangingRawTimestampOrPayload() throws Exception {
+        PacketRateSession session = new PacketRateSession();
+        session.start(0, 0, "device", "channel", "test");
+        session.accept(0, new byte[]{1});
+        session.accept(8_000_000, new byte[]{2});
+        session.pause(10_000_000);
+        session.resume(1_010_000_000);
+        session.accept(1_010_000_000, new byte[]{3});
+        session.accept(1_018_000_000, new byte[]{4});
+        session.pause(1_020_000_000);
+        StringWriter writer = new StringWriter();
+        PacketCsvWriter.write(writer, session.export(), "test", 35, "phone");
+        String text = writer.toString();
+        assertTrue(text.contains("# paused_ms,1000.000000\r\n"));
+        assertTrue(text.contains("# active_duration_ms,20.000000\r\n"));
+        assertTrue(text.contains("3,1010000000,1010.000000,,1,\"03\"\r\n"));
+        assertTrue(text.contains("4,1018000000,1018.000000,8.000000,1,\"04\"\r\n"));
+    }
     @Test public void fullPayloadBeyondPreviewIsExportedWithExactTimestampAndLength() throws Exception {
         PacketRateSession session = new PacketRateSession();
         session.start(0, 0, "device", "channel", "test");

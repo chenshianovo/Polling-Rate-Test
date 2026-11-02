@@ -6,6 +6,72 @@ import static org.junit.Assert.*;
 public class PacketRateSessionTest {
     private static final byte[] REPORT = {1, 2, 3, 4};
 
+    @Test public void pauseRetainsRowsAndResumeExcludesGapFromStatistics() {
+        PacketRateSession session = new PacketRateSession();
+        session.start(0, 0, "device", "channel", "test");
+        session.accept(0, REPORT);
+        session.accept(8_000_000, new byte[]{5});
+        session.pause(10_000_000);
+        session.accept(500_000_000, new byte[]{9});
+        PacketRateSession.ExportData frozen = session.export();
+        assertEquals(2, frozen.lengths.length);
+        assertTrue(session.resume(1_010_000_000));
+        session.accept(1_000_000_000, new byte[]{9}); // A callback queued before resume cannot enter the new segment.
+        session.accept(1_010_000_000, new byte[]{6});
+        session.accept(1_018_000_000, new byte[]{7});
+        session.pause(1_020_000_000);
+        PacketRateSession.ViewData view = session.view(9_000_000_000L);
+        assertEquals(4, view.count);
+        assertEquals(20_000_000, view.elapsedNs);
+        assertEquals(125.0, view.averageHz, 0.000001);
+        assertEquals(8.0, view.maxMs, 0.000001);
+        assertArrayEquals(new double[]{8, 8}, view.intervals, 0.000001);
+        assertArrayEquals(new boolean[]{true, false, true, false}, session.export().samples.segmentStarts);
+        assertEquals(1_000_000_000, session.export().pausedNs);
+        assertArrayEquals(REPORT, frozen.payloads[0]);
+        assertArrayEquals(new byte[]{7}, session.export().payloads[3]);
+    }
+
+    @Test public void pausedTimeDoesNotConsumeTimedRecordingBudget() {
+        PacketRateSession session = new PacketRateSession();
+        session.start(0, 10, "device", "channel", "test");
+        session.accept(1, REPORT);
+        session.pause(2_000_000_000L);
+        assertTrue(session.isPaused());
+        assertEquals(2_000_000_000L, session.view(20_000_000_000L).elapsedNs);
+        assertTrue(session.resume(22_000_000_000L));
+        session.accept(29_999_999_999L, REPORT);
+        session.accept(30_000_000_000L, REPORT);
+        assertFalse(session.isRecording());
+        assertFalse(session.isPaused());
+        assertEquals(2, session.export().lengths.length);
+        assertEquals(10_000_000_000L, session.view(40_000_000_000L).elapsedNs);
+    }
+
+    @Test public void stoppingPausedSessionKeepsEndAtPauseAndCannotResume() {
+        PacketRateSession session = new PacketRateSession();
+        session.start(0, 0, "device", "channel", "test");
+        session.accept(10, REPORT);
+        session.pause(20);
+        session.stop("closed", 100);
+        assertEquals(20, session.export().endNs);
+        assertFalse(session.resume(200));
+        session.channelChanged();
+        assertFalse(session.isPaused());
+        assertEquals(1, session.generation());
+        assertNull(session.export());
+    }
+
+    @Test public void pauseAtDeadlineCompletesInsteadOfCreatingResumableSession() {
+        PacketRateSession session = new PacketRateSession();
+        session.start(0, 1, "device", "channel", "test");
+        session.accept(10, REPORT);
+        session.pause(1_000_000_000);
+        assertFalse(session.isPaused());
+        assertFalse(session.resume(2_000_000_000));
+        assertEquals(1_000_000_000, session.export().endNs);
+    }
+
     @Test public void previewDoesNotStartRecording() {
         PacketRateSession session = new PacketRateSession();
         session.accept(1_000_000L, REPORT);

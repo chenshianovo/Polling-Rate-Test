@@ -117,7 +117,7 @@ Linux/macOS 使用 `bash ./gradlew assembleDebug testDebugUnitTest lintDebug`。
 
 1.3.0 已完成 `assembleDebug testDebugUnitTest lintDebug`：**30 个单元测试通过，0 失败、0 错误；Android Lint 0 错误、4 条警告**。警告为备份规则建议、重复背景绘制及两处中文文字拼接。新增测试覆盖暂停续录、跨暂停 CSV 和计时边界；APK 签名验证通过，与 1.2.0 同证书。新增 AndroidX Core 1.15.0 依赖用于 FileProvider，首次构建可能需要联网下载。**USB、BLE、交互悬浮窗及 OTA 尚未真机验收。**
 
-本次仅执行源码静态检查：12 个 XML 格式、Java 资源引用、Activity 控件 ID、Manifest 组件对应文件、括号配对与差异空白检查通过。这些检查不能代替 Java/Android 编译和真机验证。
+另外完成源码静态检查：12 个 XML 格式、Java 资源引用、Activity 控件 ID、Manifest 组件对应文件、括号配对与差异空白检查通过。这些检查不能代替真机验证。
 
 建议真机检查：USB 拔出/拒绝授权/接口占用/释放恢复；BLE Notify/Indicate/多特征/权限撤销；通道就绪自动开窗；快速开始/暂停/继续；导出快照与大于 64 字节的完整 CSV；导出目录失效；底部三页来回切换；悬浮权限取消、后台计时、锁屏、通知关闭、横竖屏拖动与展开；三种主题；OTA 无更新/下载中断/摘要错误/异签名/安装权限拒绝/同签名覆盖安装。
 

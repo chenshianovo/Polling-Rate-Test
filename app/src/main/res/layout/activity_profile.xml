@@ -11,6 +11,7 @@
             <Button android:id="@+id/theme_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/appearance_label" />
             <Button android:id="@+id/check_update" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/check_update_label" />
             <TextView android:id="@+id/update_status" style="@style/Caption" android:layout_marginTop="6dp" />
+            <Button android:id="@+id/open_release" android:layout_width="match_parent" android:layout_height="wrap_content" android:visibility="gone" android:text="@string/open_release_label" />
             <Button android:id="@+id/open_standard" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/standard_input_label" />
         </com.gamepad.rate.CollapsibleCard>
     </LinearLayout>

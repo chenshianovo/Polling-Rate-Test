@@ -3,17 +3,24 @@
     android:id="@+id/ble_root" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
         <TextView style="@style/Caption" android:layout_marginTop="8dp" android:text="@string/ble_title" android:textSize="26sp" android:textStyle="bold" android:textColor="?attr/primaryText" android:tag="primary" />
+        <TextView android:id="@+id/ble_device_name" style="@style/Caption" android:layout_marginTop="8dp" android:textSize="18sp" android:textStyle="bold" android:textColor="?attr/primaryText" android:tag="primary" android:textIsSelectable="true" />
         <Button android:id="@+id/overlay_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/overlay_button" />
         <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_ble.xml_0|设备与通道">
-            <TextView android:id="@+id/ble_device_name" style="@style/Caption" android:textSize="18sp" android:textStyle="bold" android:textColor="?attr/primaryText" android:tag="primary" />
             <TextView android:id="@+id/ble_connection" style="@style/Caption" android:layout_marginTop="8dp" />
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
                 <Button android:id="@+id/ble_choose_device" style="@style/ActionButton" android:text="@string/ble_device" />
-                <Button android:id="@+id/ble_settings" style="@style/ActionButton" android:text="@string/bluetooth_settings" />
+                <Button android:id="@+id/ble_settings" style="@style/ActionButton" android:text="@string/ble_manage_pairing" />
             </LinearLayout>
             <Button android:id="@+id/ble_choose_channel" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ble_channel" />
             <TextView android:id="@+id/ble_channel_name" style="@style/Caption" android:textIsSelectable="true" />
             <Button android:id="@+id/ble_disconnect" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/ble_disconnect" />
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="ble_link_info|连接信息">
+            <TextView android:id="@+id/ble_link_info" style="@style/Caption" android:lineSpacingExtra="5dp" android:textIsSelectable="true" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/ble_refresh_info" style="@style/ActionButton" android:text="@string/ble_refresh_info" />
+                <Button android:id="@+id/ble_mtu" style="@style/ActionButton" android:text="@string/ble_request_mtu" />
+            </LinearLayout>
         </com.gamepad.rate.CollapsibleCard>
         <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="activity_ble.xml_1|测试与导出">
             <TextView style="@style/Caption" android:text="@string/ble_rate" />

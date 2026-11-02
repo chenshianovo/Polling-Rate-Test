@@ -32,11 +32,12 @@ public final class BleActivity extends ThemedActivity {
     private PacketRuntime runtime;
     private PacketRateSession session;
     private BleGattClient client;
-    private TextView deviceName, connection, channelName, rate, status, timer, statistics, hex, services;
+    private TextView deviceName, connection, channelName, rate, status, timer, statistics, hex, services, linkInfo;
     private Button chooseDevice, chooseChannel, disconnect, startStop, duration, clear, export;
     private IntervalChartView chart;
     private int seconds;
     private String shownServices = "";
+    private String shownLinkInfo = "";
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
             render();
@@ -57,6 +58,7 @@ public final class BleActivity extends ThemedActivity {
         statistics = findViewById(R.id.ble_statistics);
         hex = findViewById(R.id.ble_hex);
         services = findViewById(R.id.ble_services);
+        linkInfo = findViewById(R.id.ble_link_info);
         chooseDevice = findViewById(R.id.ble_choose_device);
         chooseChannel = findViewById(R.id.ble_choose_channel);
         disconnect = findViewById(R.id.ble_disconnect);
@@ -88,10 +90,34 @@ public final class BleActivity extends ThemedActivity {
                     render();
                 }).show());
         export.setOnClickListener(view -> chooseExport());
-        findViewById(R.id.ble_settings).setOnClickListener(view -> {
-            try { startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); }
-            catch (ActivityNotFoundException exception) { toast("没有可打开的系统蓝牙设置"); }
-        });
+        findViewById(R.id.ble_refresh_info).setOnClickListener(view -> client.refreshLinkInfo());
+        findViewById(R.id.ble_mtu).setOnClickListener(view -> showMtuChoices());
+        findViewById(R.id.ble_settings).setOnClickListener(view -> managePairing());
+    }
+
+    private void managePairing() {
+        BleGattClient.State state = client.state();
+        String device = state.address.isEmpty() ? "" : state.deviceName + "\n\n";
+        new AlertDialog.Builder(this).setTitle("管理配对")
+                .setMessage(device + "普通应用不能直接删除系统配对。请在系统蓝牙设置中选择设备，点击取消配对。")
+                .setPositiveButton("打开蓝牙设置", (dialog, which) -> {
+                    runtime.disconnect("进入系统管理配对，已停止本 App 连接");
+                    try { startActivity(new Intent(Settings.ACTION_BLUETOOTH_SETTINGS)); }
+                    catch (ActivityNotFoundException error) { toast("没有可打开的系统蓝牙设置"); }
+                }).setNegativeButton("取消", null).show();
+    }
+
+    private void showMtuChoices() {
+        BleGattClient.State state = client.state();
+        if (!state.connected || state.busy || session.isRecording()) return;
+        new AlertDialog.Builder(this).setTitle("协商 ATT MTU")
+                .setMessage("这是主动协商，会改变连接参数，ATT MTU 不等于 LL 包长。Android 14 起，首次请求由系统按 517 发起，最终以设备回调为准。")
+                .setPositiveButton("选择请求值", (dialog, which) -> new AlertDialog.Builder(this)
+                        .setTitle("请求 ATT MTU")
+                        .setItems(new String[]{"23", "185", "247", "517"}, (picker, index) ->
+                                client.requestMtu(new int[]{23, 185, 247, 517}[index]))
+                        .setNegativeButton("取消", null).show())
+                .setNegativeButton("取消", null).show();
     }
 
     @Override protected void onResume() {
@@ -215,6 +241,13 @@ public final class BleActivity extends ThemedActivity {
             shownServices = transport.services;
             services.setText(shownServices);
         }
+        if (!shownLinkInfo.equals(transport.connectionDetails)) {
+            shownLinkInfo = transport.connectionDetails;
+            linkInfo.setText(shownLinkInfo);
+        }
+        boolean canReadInfo = transport.connected && !transport.busy && !data.recording;
+        findViewById(R.id.ble_refresh_info).setEnabled(canReadInfo);
+        findViewById(R.id.ble_mtu).setEnabled(canReadInfo);
         chooseDevice.setEnabled(!data.recording);
         chooseChannel.setEnabled(transport.connected && !transport.busy && !data.recording && !transport.channels.isEmpty());
         disconnect.setEnabled((transport.connected || transport.busy));

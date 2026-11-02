@@ -1,10 +1,16 @@
 package com.gamepad.rate;
 
 import java.util.Arrays;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /** One BLE characteristic or USB endpoint; arrival times use elapsedRealtimeNanos. */
 final class PacketRateSession {
     static final int MAX_PAYLOAD_BYTES = 16 * 1024 * 1024;
+    static final int MAX_CONNECTION_SNAPSHOTS = 1024;
+    private final List<ConnectionMetadata> connectionHistory = new ArrayList<>();
+    private int[] connectionIds;
     private final RateStatistics stats = new RateStatistics();
     private final int[] lengths = new int[RateStatistics.CAPACITY];
     private final byte[][] payloads = new byte[RateStatistics.CAPACITY][];
@@ -34,6 +40,8 @@ final class PacketRateSession {
         startNs = -1;
         endNs = deadlineNs = bytes = 0;
         device = channel = started = "";
+        connectionHistory.clear();
+        connectionIds = null;
         reason = "已清空";
     }
 
@@ -46,6 +54,11 @@ final class PacketRateSession {
     }
 
     synchronized void start(long nowNs, int seconds, String device, String channel, String started) {
+        start(nowNs, seconds, device, channel, started, null);
+    }
+
+    synchronized void start(long nowNs, int seconds, String device, String channel, String started,
+                            ConnectionMetadata connection) {
         clear();
         this.device = device;
         this.channel = channel;
@@ -55,6 +68,21 @@ final class PacketRateSession {
         deadlineNs = seconds == 0 ? 0 : nowNs + seconds * RateStatistics.SECOND_NS;
         recording = true;
         reason = "记录中";
+        if (connection != null) {
+            connectionIds = new int[RateStatistics.CAPACITY];
+            connectionHistory.add(connection);
+        }
+    }
+
+    synchronized void updateConnection(ConnectionMetadata connection) {
+        if ((!recording && !paused) || connectionHistory.isEmpty()) return;
+        ConnectionMetadata previous = connectionHistory.get(connectionHistory.size() - 1);
+        if (previous.values.equals(connection.values) || connection.observedNs < previous.observedNs) return;
+        if (connectionHistory.size() >= MAX_CONNECTION_SNAPSHOTS) {
+            stop("蓝牙参数历史已满，请导出后重测", connection.observedNs);
+            return;
+        }
+        connectionHistory.add(connection);
     }
 
     synchronized long generation() { return generation; }
@@ -102,6 +130,7 @@ final class PacketRateSession {
         if (stats.add(timestampNs, timestampNs / 1_000_000L, false)) {
             lengths[index] = value.length;
             payloads[index] = value.clone();
+            if (connectionIds != null) connectionIds[index] = connectionHistory.size() - 1;
             bytes += value.length;
         }
         if (stats.full()) stop("达到 250000 次接收上限，请导出后重测", timestampNs);
@@ -134,7 +163,9 @@ final class PacketRateSession {
         byte[][] copy = new byte[stats.size()][];
         for (int i = 0; i < copy.length; i++) copy[i] = payloads[i].clone();
         return new ExportData(stats.snapshot(), Arrays.copyOf(lengths, stats.size()), copy, device, channel,
-                started, reason, startNs, endNs, bytes, stats.averageHz(), stats.backwards(), pausedNs);
+                started, reason, startNs, endNs, bytes, stats.averageHz(), stats.backwards(), pausedNs,
+                Collections.unmodifiableList(new ArrayList<>(connectionHistory)),
+                connectionIds == null ? new int[0] : Arrays.copyOf(connectionIds, stats.size()));
     }
 
     static String hex(byte[] bytes) {
@@ -175,12 +206,16 @@ final class PacketRateSession {
         final String device, channel, started, reason;
         final long startNs, endNs, bytes, backwards, pausedNs;
         final double averageHz;
+        final List<ConnectionMetadata> connections;
+        final int[] connectionIds;
         ExportData(RateStatistics.Snapshot samples, int[] lengths, byte[][] payloads, String device, String channel,
-                   String started, String reason, long startNs, long endNs, long bytes, double averageHz, long backwards, long pausedNs) {
+                   String started, String reason, long startNs, long endNs, long bytes, double averageHz, long backwards, long pausedNs,
+                   List<ConnectionMetadata> connections, int[] connectionIds) {
             this.samples = samples; this.lengths = lengths; this.payloads = payloads; this.device = device; this.channel = channel;
             this.started = started; this.reason = reason; this.startNs = startNs; this.endNs = endNs;
             this.bytes = bytes; this.averageHz = averageHz; this.backwards = backwards;
             this.pausedNs = pausedNs;
+            this.connections = connections; this.connectionIds = connectionIds;
         }
     }
 }

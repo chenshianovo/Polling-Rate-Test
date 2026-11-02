@@ -2,6 +2,7 @@ package com.gamepad.rate;
 
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.ActivityNotFoundException;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.Signature;
@@ -9,6 +10,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import android.widget.TextView;
+import android.view.View;
+import android.util.Log;
 import androidx.core.content.FileProvider;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -39,13 +42,25 @@ final class UpdateManager {
     private boolean busy, waitingPermission;
     private File pendingApk;
 
-    UpdateManager(ProfileActivity activity) { this.activity = activity; }
+    UpdateManager(ProfileActivity activity) {
+        this.activity = activity;
+        activity.findViewById(R.id.open_release).setOnClickListener(view -> {
+            try { activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(REPO + "releases"))); }
+            catch (ActivityNotFoundException error) { status("没有可打开发布页的浏览器"); }
+        });
+    }
     private void ui(Runnable action) { activity.runOnUiThread(() -> { if (!destroyed && !activity.isFinishing()) action.run(); }); }
     private void status(String text) { ((TextView) activity.findViewById(R.id.update_status)).setText(text); }
     private void busy(boolean value, String message) {
         busy = value;
         activity.findViewById(R.id.check_update).setEnabled(!value);
+        activity.findViewById(R.id.open_release).setVisibility(View.GONE);
         status(message);
+    }
+    private void failed(String stage, Exception error) {
+        Log.w("GamepadRateUpdate", stage, error);
+        busy(false, stage + "：" + UpdateErrors.describe(error));
+        activity.findViewById(R.id.open_release).setVisibility(View.VISIBLE);
     }
     void check() {
         if (busy) return;
@@ -81,7 +96,7 @@ final class UpdateManager {
                             .setPositiveButton("下载更新", (dialog, which) -> download(apk))
                             .setNegativeButton("暂不更新", null).show();
                 });
-            } catch (Exception error) { ui(() -> busy(false, "检查失败：" + error.getMessage())); }
+            } catch (Exception error) { ui(() -> failed("检查失败", error)); }
         });
     }
     // Current releases use vMAJOR.MINOR.PATCH; unrecognized tags are not guessed.
@@ -128,7 +143,7 @@ final class UpdateManager {
                 ui(() -> { pendingApk = ready; busy(false, "校验通过，等待安装"); install(); });
             } catch (Exception error) {
                 if (file != null) file.delete();
-                ui(() -> busy(false, "更新失败：" + error.getMessage()));
+                ui(() -> failed("更新失败", error));
             }
         });
     }
@@ -209,7 +224,7 @@ final class UpdateManager {
                 if (location == null) throw new java.io.IOException("更新地址重定向失败");
                 url = new URL(url, location); continue;
             }
-            if (status != 200) { http.disconnect(); throw new java.io.IOException("服务器返回 " + status); }
+            if (status != 200) { http.disconnect(); throw new UpdateErrors.HttpFailure(status); }
             return http;
         }
         throw new java.io.IOException("重定向次数过多");

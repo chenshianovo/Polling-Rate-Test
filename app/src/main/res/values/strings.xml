@@ -3,6 +3,10 @@
     <string name="export_directory_label">修改导出目录</string>
     <string name="appearance_label">外观</string>
     <string name="check_update_label">检查更新</string>
+    <string name="open_release_label">打开发布页</string>
+    <string name="ble_manage_pairing">管理配对</string>
+    <string name="ble_refresh_info">刷新信息</string>
+    <string name="ble_request_mtu">协商 MTU</string>
     <string name="standard_input_label">标准手柄测试</string>
     <string name="app_version_label">手柄回报率测试 · %1$s</string>
     <string name="app_name">手柄回报率测试</string>

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" android:tag="page" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:padding="20dp">
+        <TextView style="@style/Caption" android:text="@string/profile_title" android:textSize="26sp" android:textStyle="bold" android:tag="primary" />
+        <TextView android:id="@+id/app_version" style="@style/Caption" android:layout_marginTop="10dp" />
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="profile_export|导出">
+            <TextView android:id="@+id/directory_value" style="@style/Caption" android:maxLines="3" android:ellipsize="middle" />
+            <Button android:id="@+id/export_directory" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/export_directory_label" />
+        </com.gamepad.rate.CollapsibleCard>
+        <com.gamepad.rate.CollapsibleCard style="@style/Card" android:tag="profile_settings|设置">
+            <Button android:id="@+id/theme_button" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/appearance_label" />
+            <Button android:id="@+id/check_update" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/check_update_label" />
+            <TextView android:id="@+id/update_status" style="@style/Caption" android:layout_marginTop="6dp" />
+            <Button android:id="@+id/open_standard" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/standard_input_label" />
+        </com.gamepad.rate.CollapsibleCard>
+    </LinearLayout>
+</ScrollView>

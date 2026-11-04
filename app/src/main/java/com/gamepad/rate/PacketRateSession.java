@@ -11,6 +11,12 @@ final class PacketRateSession {
     static final int MAX_CONNECTION_SNAPSHOTS = 1024;
     private final List<ConnectionMetadata> connectionHistory = new ArrayList<>();
     private int[] connectionIds;
+    private ReportFormat reportFormat = ReportFormat.OFF;
+    private int[] cumulativeReports;
+    private byte[] reportStatuses;
+    private int[] splitReportsByPacket, pendingBytesByPacket, skippedBytesByPacket;
+    private ReportStreamDecoder reportDecoder;
+    private int reports, mergedPackets, unmatchedPackets, splitReports, skippedReportBytes, discardedFragmentBytes;
     private final RateStatistics stats = new RateStatistics();
     private final int[] lengths = new int[RateStatistics.CAPACITY];
     private final byte[][] payloads = new byte[RateStatistics.CAPACITY][];
@@ -42,15 +48,30 @@ final class PacketRateSession {
         device = channel = started = "";
         connectionHistory.clear();
         connectionIds = null;
+        cumulativeReports = null;
+        reportStatuses = null;
+        splitReportsByPacket = pendingBytesByPacket = skippedBytesByPacket = null;
+        reportDecoder = null;
+        reports = mergedPackets = unmatchedPackets = splitReports = skippedReportBytes = discardedFragmentBytes = 0;
         reason = "已清空";
     }
 
     synchronized void channelChanged() {
         generation++;
+        reportFormat = ReportFormat.OFF;
         clear();
         preview = new byte[0];
         previewLength = 0;
         previewTime = -1;
+    }
+
+    synchronized ReportFormat reportFormat() { return reportFormat; }
+
+    synchronized boolean configureReports(ReportFormat format, long expectedGeneration) {
+        if (recording || generation != expectedGeneration) return false;
+        clear();
+        reportFormat = format;
+        return true;
     }
 
     synchronized void start(long nowNs, int seconds, String device, String channel, String started) {
@@ -68,6 +89,14 @@ final class PacketRateSession {
         deadlineNs = seconds == 0 ? 0 : nowNs + seconds * RateStatistics.SECOND_NS;
         recording = true;
         reason = "记录中";
+        if (reportFormat.enabled()) {
+            cumulativeReports = new int[RateStatistics.CAPACITY];
+            reportStatuses = new byte[RateStatistics.CAPACITY];
+            splitReportsByPacket = new int[RateStatistics.CAPACITY];
+            pendingBytesByPacket = new int[RateStatistics.CAPACITY];
+            skippedBytesByPacket = new int[RateStatistics.CAPACITY];
+            reportDecoder = new ReportStreamDecoder(reportFormat);
+        }
         if (connection != null) {
             connectionIds = new int[RateStatistics.CAPACITY];
             connectionHistory.add(connection);
@@ -90,6 +119,7 @@ final class PacketRateSession {
     synchronized void pause(long nowNs) {
         if (!recording) return;
         if (deadlineNs > 0 && nowNs >= deadlineNs) { stop("定时测试完成", deadlineNs); return; }
+        discardPendingReports();
         recording = false;
         paused = true;
         pauseNs = endNs = nowNs;
@@ -121,6 +151,8 @@ final class PacketRateSession {
         // Reject backwards samples before the memory check, preserving exact row alignment.
         if (index > 0 && timestampNs < stats.lastTime()) {
             stats.add(timestampNs, timestampNs / 1_000_000L, false);
+            // This delivery leaves a hole in the recorded stream; never join across it.
+            discardPendingReports();
             return;
         }
         if (value.length > payloadLimit - bytes) {
@@ -130,6 +162,19 @@ final class PacketRateSession {
         if (stats.add(timestampNs, timestampNs / 1_000_000L, false)) {
             lengths[index] = value.length;
             payloads[index] = value.clone();
+            if (reportFormat.enabled()) {
+                ReportStreamDecoder.Result result = reportDecoder.accept(value);
+                reportStatuses[index] = result.status;
+                reports += result.reports;
+                if (result.reports > 1) mergedPackets++;
+                if (result.skippedBytes > 0) unmatchedPackets++;
+                splitReports += result.splitReports;
+                skippedReportBytes += result.skippedBytes;
+                splitReportsByPacket[index] = result.splitReports;
+                pendingBytesByPacket[index] = result.pendingBytes;
+                skippedBytesByPacket[index] = result.skippedBytes;
+                cumulativeReports[index] = reports;
+            }
             if (connectionIds != null) connectionIds[index] = connectionHistory.size() - 1;
             bytes += value.length;
         }
@@ -140,6 +185,7 @@ final class PacketRateSession {
     synchronized void stop(String reason, long nowNs) {
         if (!recording && !paused) return;
         if (paused) nowNs = pauseNs;
+        discardPendingReports();
         paused = false;
         recording = false;
         endNs = Math.max(startNs, deadlineNs > 0 ? Math.min(deadlineNs, nowNs) : nowNs);
@@ -148,14 +194,29 @@ final class PacketRateSession {
 
     synchronized boolean isRecording() { return recording; }
 
+    private void discardPendingReports() {
+        if (reportDecoder != null) discardedFragmentBytes += reportDecoder.discardPending();
+    }
+
+    private int pendingReportBytes() { return reportDecoder == null ? 0 : reportDecoder.pendingBytes(); }
+
     synchronized ViewData view(long nowNs) {
         if (recording && deadlineNs > 0 && nowNs >= deadlineNs) stop("定时测试完成", deadlineNs);
         long end = recording ? nowNs : endNs;
         long elapsed = startNs < 0 ? 0 : Math.max(0, end - startNs - pausedNs);
         int hz = startNs < 0 || end - segmentNs < RateStatistics.SECOND_NS ? -1 : stats.recentCount(end);
+        int reportHz = hz < 0 || !reportFormat.enabled() ? -1
+                : reportsThrough(end) - reportsThrough(end - RateStatistics.SECOND_NS);
         return new ViewData(recording, stats.size(), hz, elapsed, bytes, reason, stats.averageHz(),
                 stats.meanMs(), stats.minMs(), stats.maxMs(), stats.window(), stats.recentIntervals(160),
-                stats.equalTimes(), stats.backwards(), preview.clone(), previewLength, previewTime);
+                stats.equalTimes(), stats.backwards(), preview.clone(), previewLength, previewTime,
+                reportFormat, reports, mergedPackets, unmatchedPackets, reportHz,
+                splitReports, pendingReportBytes(), skippedReportBytes, discardedFragmentBytes);
+    }
+
+    private int reportsThrough(long timeNs) {
+        int count = stats.samplesThrough(timeNs);
+        return count == 0 ? 0 : cumulativeReports[count - 1];
     }
 
     synchronized ExportData export() {
@@ -165,7 +226,13 @@ final class PacketRateSession {
         return new ExportData(stats.snapshot(), Arrays.copyOf(lengths, stats.size()), copy, device, channel,
                 started, reason, startNs, endNs, bytes, stats.averageHz(), stats.backwards(), pausedNs,
                 Collections.unmodifiableList(new ArrayList<>(connectionHistory)),
-                connectionIds == null ? new int[0] : Arrays.copyOf(connectionIds, stats.size()));
+                connectionIds == null ? new int[0] : Arrays.copyOf(connectionIds, stats.size()),
+                reportFormat, cumulativeReports == null ? new int[0] : Arrays.copyOf(cumulativeReports, stats.size()),
+                reportStatuses == null ? new byte[0] : Arrays.copyOf(reportStatuses, stats.size()),
+                reports, mergedPackets, unmatchedPackets, splitReports, pendingReportBytes(), skippedReportBytes, discardedFragmentBytes,
+                splitReportsByPacket == null ? new int[0] : Arrays.copyOf(splitReportsByPacket, stats.size()),
+                pendingBytesByPacket == null ? new int[0] : Arrays.copyOf(pendingBytesByPacket, stats.size()),
+                skippedBytesByPacket == null ? new int[0] : Arrays.copyOf(skippedBytesByPacket, stats.size()));
     }
 
     static String hex(byte[] bytes) {
@@ -188,14 +255,23 @@ final class PacketRateSession {
         final RateStatistics.Window window;
         final double[] intervals;
         final byte[] preview;
+        final ReportFormat reportFormat;
+        final int reports, mergedPackets, unmatchedPackets, reportHz;
+        final int splitReports, pendingReportBytes, skippedReportBytes, discardedFragmentBytes;
         ViewData(boolean recording, int count, int hz, long elapsedNs, long bytes, String reason,
                  double averageHz, double meanMs, double minMs, double maxMs, RateStatistics.Window window,
-                 double[] intervals, long equalTimes, long backwards, byte[] preview, int previewLength, long previewTime) {
+                 double[] intervals, long equalTimes, long backwards, byte[] preview, int previewLength, long previewTime,
+                 ReportFormat reportFormat, int reports, int mergedPackets, int unmatchedPackets, int reportHz,
+                 int splitReports, int pendingReportBytes, int skippedReportBytes, int discardedFragmentBytes) {
             this.recording = recording; this.count = count; this.hz = hz; this.elapsedNs = elapsedNs;
             this.bytes = bytes; this.reason = reason; this.averageHz = averageHz; this.meanMs = meanMs;
             this.minMs = minMs; this.maxMs = maxMs; this.window = window; this.intervals = intervals;
             this.equalTimes = equalTimes; this.backwards = backwards; this.preview = preview;
             this.previewLength = previewLength; this.previewTime = previewTime;
+            this.reportFormat = reportFormat; this.reports = reports; this.mergedPackets = mergedPackets;
+            this.unmatchedPackets = unmatchedPackets; this.reportHz = reportHz;
+            this.splitReports = splitReports; this.pendingReportBytes = pendingReportBytes;
+            this.skippedReportBytes = skippedReportBytes; this.discardedFragmentBytes = discardedFragmentBytes;
         }
     }
 
@@ -208,14 +284,29 @@ final class PacketRateSession {
         final double averageHz;
         final List<ConnectionMetadata> connections;
         final int[] connectionIds;
+        final ReportFormat reportFormat;
+        final int[] cumulativeReports;
+        final byte[] reportStatuses;
+        final int reports, mergedPackets, unmatchedPackets;
+        final int splitReports, pendingReportBytes, skippedReportBytes, discardedFragmentBytes;
+        final int[] splitReportsByPacket, pendingBytesByPacket, skippedBytesByPacket;
         ExportData(RateStatistics.Snapshot samples, int[] lengths, byte[][] payloads, String device, String channel,
                    String started, String reason, long startNs, long endNs, long bytes, double averageHz, long backwards, long pausedNs,
-                   List<ConnectionMetadata> connections, int[] connectionIds) {
+                   List<ConnectionMetadata> connections, int[] connectionIds, ReportFormat reportFormat,
+                   int[] cumulativeReports, byte[] reportStatuses, int reports, int mergedPackets, int unmatchedPackets,
+                   int splitReports, int pendingReportBytes, int skippedReportBytes, int discardedFragmentBytes,
+                   int[] splitReportsByPacket, int[] pendingBytesByPacket, int[] skippedBytesByPacket) {
             this.samples = samples; this.lengths = lengths; this.payloads = payloads; this.device = device; this.channel = channel;
             this.started = started; this.reason = reason; this.startNs = startNs; this.endNs = endNs;
             this.bytes = bytes; this.averageHz = averageHz; this.backwards = backwards;
             this.pausedNs = pausedNs;
             this.connections = connections; this.connectionIds = connectionIds;
+            this.reportFormat = reportFormat; this.cumulativeReports = cumulativeReports; this.reportStatuses = reportStatuses;
+            this.reports = reports; this.mergedPackets = mergedPackets; this.unmatchedPackets = unmatchedPackets;
+            this.splitReports = splitReports; this.pendingReportBytes = pendingReportBytes;
+            this.skippedReportBytes = skippedReportBytes; this.discardedFragmentBytes = discardedFragmentBytes;
+            this.splitReportsByPacket = splitReportsByPacket; this.pendingBytesByPacket = pendingBytesByPacket;
+            this.skippedBytesByPacket = skippedBytesByPacket;
         }
     }
 }

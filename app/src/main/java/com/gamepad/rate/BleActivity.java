@@ -90,6 +90,7 @@ public final class BleActivity extends ThemedActivity {
                     render();
                 }).show());
         export.setOnClickListener(view -> chooseExport());
+        findViewById(R.id.ble_report_counting).setOnClickListener(view -> ReportCountingDialog.show(this, runtime, this::render));
         findViewById(R.id.ble_refresh_info).setOnClickListener(view -> client.refreshLinkInfo());
         findViewById(R.id.ble_mtu).setOnClickListener(view -> showMtuChoices());
         findViewById(R.id.ble_settings).setOnClickListener(view -> managePairing());
@@ -222,6 +223,7 @@ public final class BleActivity extends ThemedActivity {
         long now = SystemClock.elapsedRealtimeNanos();
         BleGattClient.State transport = client.state();
         PacketRateSession.ViewData data = session.view(now);
+        ReportCountingDialog.render(this, data, R.id.ble_report_counting, R.id.ble_reports, transport.ready && !transport.busy);
         deviceName.setText(transport.deviceName);
         connection.setText(transport.status);
         channelName.setText(transport.selected == null ? "尚未选择接收通道" : transport.selected.label);

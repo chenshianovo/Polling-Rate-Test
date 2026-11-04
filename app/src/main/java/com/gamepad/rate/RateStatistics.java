@@ -63,6 +63,7 @@ final class RateStatistics {
     }
 
     int size() { return size; }
+    int samplesThrough(long timeNs) { return upperBound(timeNs); }
     void beginSegment() { nextSegment = true; }
     boolean full() { return size == CAPACITY; }
     long backwards() { return backwards; }

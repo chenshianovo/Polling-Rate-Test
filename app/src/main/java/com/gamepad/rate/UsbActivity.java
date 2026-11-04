@@ -86,6 +86,7 @@ public final class UsbActivity extends ThemedActivity {
                     seconds = new int[]{10, 30, 60, 0}[which]; runtime.seconds = seconds; render();
                 }).show());
         export.setOnClickListener(view -> chooseExport());
+        findViewById(R.id.usb_report_counting).setOnClickListener(view -> ReportCountingDialog.show(this, runtime, this::render));
         IntentFilter filter = new IntentFilter(permissionAction);
         filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED);
@@ -165,6 +166,7 @@ public final class UsbActivity extends ThemedActivity {
         long now = SystemClock.elapsedRealtimeNanos();
         UsbHostClient.State transport = client.state();
         PacketRateSession.ViewData data = session.view(now);
+        ReportCountingDialog.render(this, data, R.id.usb_report_counting, R.id.usb_reports, transport.ready && !transport.busy);
         deviceName.setText(transport.device); connection.setText(transport.status);
         channelName.setText(transport.channel.isEmpty() ? "尚未选择端点" : transport.channel);
         rate.setText(data.hz < 0 ? "—" : Integer.toString(data.hz));

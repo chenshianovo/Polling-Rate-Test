@@ -51,10 +51,22 @@ public final class RateOverlayService extends Service {
         @Override public void run() {
             if (runtime == null || !Settings.canDrawOverlays(RateOverlayService.this)) { stopSelf(); return; }
             PacketRateSession.ViewData data = runtime.data();
+            boolean expanded = controls.getVisibility() == View.VISIBLE;
             String state = data.recording ? "记录中" : runtime.session.isPaused() ? "已暂停" : "已停止";
-            text.setText(getString(R.string.overlay_value, runtime.usbMode ? "USB" : "BLE",
-                    data.hz < 0 ? "—" : Integer.toString(data.hz), state, data.count));
-            text.setContentDescription(text.getText() + (controls.getVisibility() == View.VISIBLE ? "，点击收起" : "，点击展开"));
+            int currentRate = data.reportFormat.enabled() ? data.reportHz : data.hz;
+            String label = getString(R.string.overlay_compact_value, currentRate < 0 ? "—" : Integer.toString(currentRate));
+            if (expanded) {
+                label = getString(R.string.overlay_value, runtime.usbMode ? "USB" : "BLE",
+                        data.hz < 0 ? "—" : Integer.toString(data.hz), state, data.count);
+                if (data.reportFormat.enabled()) label += getString(R.string.overlay_reports, data.reports,
+                        data.reportHz < 0 ? "—" : Integer.toString(data.reportHz), data.mergedPackets,
+                        data.splitReports, data.pendingReportBytes);
+            }
+            text.setSingleLine(!expanded);
+            text.setTextSize(expanded && data.reportFormat.enabled() ? 14 : 18);
+            text.setText(label);
+            text.setContentDescription(text.getText() + "，" + state + (expanded ? "，点击收起" : "，点击展开"));
+            if (params.width != desiredWidth()) positionChanged();
             start.setText(runtime.session.isPaused() ? "继续" : "开始");
             enabled(start, runtime.ready() && !data.recording);
             enabled(pause, data.recording); enabled(export, data.count > 0);
@@ -98,6 +110,7 @@ public final class RateOverlayService extends Service {
             else startForeground(NOTIFICATION, notification);
             runtime.overlay = true; runtime.focus(true);
             if (window == null) createWindow();
+            controls.setVisibility(View.GONE);
             if (intent.getBooleanExtra("start", false)) runtime.startOrResume();
             ui.removeCallbacks(update); ui.post(update);
         } catch (RuntimeException error) {
@@ -123,7 +136,8 @@ public final class RateOverlayService extends Service {
         background.setCornerRadius(dp(18)); background.setStroke(dp(1), 0x55FFFFFF); window.setBackground(background);
         text = new DragTextView(this); text.setTextColor(Color.WHITE); text.setTextSize(18);
         text.setShadowLayer(dp(2), 0, dp(1), Color.BLACK); text.setPadding(dp(8), dp(4), dp(8), dp(4));
-        text.setMinHeight(dp(60)); text.setGravity(Gravity.CENTER_VERTICAL);
+        text.setMinHeight(dp(36)); text.setGravity(Gravity.CENTER_VERTICAL);
+        text.setSingleLine(true); text.setText(getString(R.string.overlay_compact_value, "—"));
         window.addView(text, new LinearLayout.LayoutParams(-1, -2));
         controls = new LinearLayout(this); controls.setOrientation(LinearLayout.VERTICAL); controls.setVisibility(View.GONE);
         window.addView(controls, new LinearLayout.LayoutParams(-1, -2));
@@ -134,7 +148,7 @@ public final class RateOverlayService extends Service {
             catch (RuntimeException error) { Toast.makeText(this, "请在“我的”中设置导出目录", Toast.LENGTH_LONG).show(); }
         });
         button(second, "关闭", this::stopSelf).setContentDescription("关闭悬浮窗并停止记录");
-        params = new WindowManager.LayoutParams(dp(220), WindowManager.LayoutParams.WRAP_CONTENT,
+        params = new WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT);
         params.gravity = Gravity.TOP | Gravity.START;
@@ -142,7 +156,8 @@ public final class RateOverlayService extends Service {
         params.y = getSharedPreferences("overlay", MODE_PRIVATE).getInt("y", dp(100));
         clampPosition();
         text.setOnClickListener(view -> {
-            controls.setVisibility(controls.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE); window.post(this::positionChanged);
+            controls.setVisibility(controls.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
+            ui.removeCallbacks(update); update.run(); window.post(this::positionChanged);
         });
         text.setOnTouchListener(new View.OnTouchListener() {
             private float downX, downY; private int x, y; private boolean dragged;
@@ -182,10 +197,17 @@ public final class RateOverlayService extends Service {
     }
     private void enabled(Button button, boolean value) { button.setEnabled(value); button.setAlpha(value ? 1 : 0.45f); }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    private int desiredWidth() {
+        int screenWidth = getResources().getDisplayMetrics().widthPixels;
+        if (controls.getVisibility() == View.VISIBLE) return Math.min(dp(220), screenWidth);
+        int content = (int) Math.ceil(text.getPaint().measureText(text.getText().toString()));
+        return Math.min(screenWidth, Math.max(dp(72), content + text.getPaddingLeft() + text.getPaddingRight()
+                + window.getPaddingLeft() + window.getPaddingRight()));
+    }
     private void clampPosition() {
         DisplayMetrics metrics = new DisplayMetrics(); manager.getDefaultDisplay().getMetrics(metrics);
-        params.width = Math.min(dp(220), metrics.widthPixels);
-        int height = Math.max(window.getHeight(), dp(76) + (controls.getVisibility() == View.VISIBLE ? dp(108) : 0));
+        params.width = desiredWidth();
+        int height = Math.max(window.getHeight(), dp(48) + (controls.getVisibility() == View.VISIBLE ? dp(108) : 0));
         params.x = Math.max(0, Math.min(params.x, metrics.widthPixels - params.width));
         params.y = Math.max(0, Math.min(params.y, metrics.heightPixels - height));
     }

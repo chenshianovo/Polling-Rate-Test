@@ -362,22 +362,23 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
 
     private void chooseExport() {
         if (recording || exporting || stats.size() == 0) return;
-        String metadata = "# measurement,android_joystick_events_not_bluetooth_packets\r\n"
-                + "# payload,unavailable_in_android_input_events_use_ble_or_usb_mode\r\n"
-                + "# device," + csvText(sessionDevice) + "\r\n"
-                + "# identity," + csvText(sessionIdentity) + "\r\n"
-                + "# started," + csvText(sessionStarted) + "\r\n"
-                + "# android_sdk," + Build.VERSION.SDK_INT + "\r\n"
-                + "# phone," + csvText(Build.MANUFACTURER + " " + Build.MODEL) + "\r\n"
-                + "# timestamp_unit,ns\r\n# timestamp_resolution," + (Build.VERSION.SDK_INT >= 34 ? "ns_unit_not_accuracy_guarantee" : "ms") + "\r\n"
-                + "# session_duration_ms," + (endMs - startMs) + "\r\n"
-                + "# average_hz," + number(stats.averageHz(), "") + "\r\n"
-                + "# callback_count," + callbacks + "\r\n"
-                + "# historical_samples," + stats.historyCount() + "\r\n"
-                + "# equal_timestamps," + stats.equalTimes() + "\r\n"
-                + "# rejected_backwards," + stats.backwards() + "\r\n"
-                + "# button_presses_excluded_from_rate," + keyPresses + "\r\n"
-                + "# stop_reason," + csvText(state) + "\r\n";
+        String metadata = "# CSV格式版本,2\r\n# 字段语言,中文\r\n"
+                + "# 测量类型,Android摇杆输入事件率（非蓝牙数据包率）\r\n"
+                + "# 原始数据说明,Android输入事件不提供原始数据，请使用BLE或USB模式\r\n"
+                + "# 设备标识," + csvText(sessionDevice) + "\r\n"
+                + "# 设备身份信息," + csvText(sessionIdentity) + "\r\n"
+                + "# 开始时间," + csvText(sessionStarted) + "\r\n"
+                + "# Android SDK版本," + Build.VERSION.SDK_INT + "\r\n"
+                + "# 手机型号," + csvText(Build.MANUFACTURER + " " + Build.MODEL) + "\r\n"
+                + "# 时间戳单位,纳秒\r\n# 时间戳分辨率说明," + (Build.VERSION.SDK_INT >= 34 ? "纳秒单位（不保证纳秒精度）" : "毫秒") + "\r\n"
+                + "# 会话时长_毫秒," + (endMs - startMs) + "\r\n"
+                + "# 平均回报率_Hz," + number(stats.averageHz(), "") + "\r\n"
+                + "# 输入回调数量," + callbacks + "\r\n"
+                + "# 历史采样数量," + stats.historyCount() + "\r\n"
+                + "# 相同时间戳数量," + stats.equalTimes() + "\r\n"
+                + "# 丢弃的逆序时间戳数量," + stats.backwards() + "\r\n"
+                + "# 按键按下次数_不计入回报率," + keyPresses + "\r\n"
+                + "# 停止原因," + csvText(state) + "\r\n";
         pendingExport = new ExportData(stats.snapshot(), metadata);
         if (!ExportStore.directory(this).isEmpty()) {
             ExportData snapshot = pendingExport; pendingExport = null; exporting = true;
@@ -435,7 +436,7 @@ public final class MainActivity extends ThemedActivity implements InputManager.I
     private static void writeCsv(BufferedWriter writer, ExportData export) throws IOException {
         writer.write('\uFEFF');
         writer.write(export.metadata);
-        writer.write("sample,event_uptime_ns,relative_ms,interval_ms,historical,callback_uptime_ms\r\n");
+        writer.write("采样序号,事件时间戳_uptime_纳秒,相对时间_毫秒,采样间隔_毫秒,是否历史采样,回调时间戳_uptime_毫秒\r\n");
         RateStatistics.Snapshot samples = export.samples;
         for (int i = 0; i < samples.times.length; i++) {
             writer.write(Integer.toString(i + 1));

@@ -27,6 +27,8 @@
             <TextView android:id="@+id/ble_rate" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/empty_rate" android:textColor="?attr/accentColor" android:tag="accent" android:textSize="60sp" android:textStyle="bold" android:fontFamily="monospace" />
             <TextView android:id="@+id/ble_status" style="@style/Caption" android:textColor="?attr/primaryText" android:tag="primary" />
             <TextView android:id="@+id/ble_timer" style="@style/Caption" android:layout_marginTop="8dp" />
+            <TextView android:id="@+id/ble_reports" style="@style/Caption" android:visibility="gone" android:layout_marginTop="8dp" />
+            <Button android:id="@+id/ble_report_counting" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="48dp" android:text="@string/report_counting_off" />
             <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
                 <Button android:id="@+id/ble_start_stop" android:tag="action" style="@style/ActionButton" android:text="@string/start" />
                 <Button android:id="@+id/ble_duration" style="@style/ActionButton" />

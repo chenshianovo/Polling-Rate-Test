@@ -1,4 +1,9 @@
 <resources>
+    <string name="report_counting_off">报告计数：关闭</string>
+    <string name="overlay_compact_value">%1$s Hz</string>
+    <string name="report_counting_on">报告计数：每份 %1$d 字节</string>
+    <string name="report_summary">完整报告 %1$d 条 · %2$s 条/秒\n合包完成 %3$d 次 · 拆包完成 %4$d 条 · 待拼 %5$d 字节\n失配跳过 %6$d 字节 · 中断残片 %7$d 字节</string>
+    <string name="overlay_reports">\n报告 %1$d · %2$s/秒\n合包 %3$d · 拆包 %4$d\n待拼 %5$d 字节</string>
     <string name="profile_title">我的</string>
     <string name="export_directory_label">修改导出目录</string>
     <string name="appearance_label">外观</string>
